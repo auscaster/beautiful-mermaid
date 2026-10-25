@@ -8,14 +8,12 @@ Ultra-fast, fully themeable, zero DOM dependencies. Built for the AI era.
 
 ![beautiful-mermaid sequence diagram example](hero.png)
 
-[![npm version](https://img.shields.io/npm/v/beautiful-mermaid.svg)](https://www.npmjs.com/package/beautiful-mermaid)
+[![npm version](https://img.shields.io/npm/v/@sourcey/beautiful-mermaid.svg)](https://www.npmjs.com/package/@sourcey/beautiful-mermaid)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[**Live Demo & Samples**](https://agents.craft.do/mermaid)
-
-**[→ Use it live in Craft Agents](https://agents.craft.do)**
-
 </div>
+
+> This is [Sourcey](https://sourcey.com)'s fork of [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) by [Craft](https://craft.do). Besides the original's renderer, it draws any diagram Mermaid's own parser reads, laid out as Mermaid lays it out: flowcharts, state, class, ER, sequence, Gantt, pie and mindmap diagrams. See [Rendering what Mermaid reads](#rendering-what-mermaid-reads).
 
 ---
 
@@ -37,7 +35,7 @@ The ASCII rendering engine is based on [mermaid-ascii](https://github.com/Alexan
 
 ## Features
 
-- **6 diagram types** — Flowcharts, State, Sequence, Class, ER, and XY Charts (bar, line, combined)
+- **9 diagram types** — Flowcharts, State, Sequence, Class, ER, and XY Charts (bar, line, combined), plus Gantt, pie and mindmap diagrams through Mermaid's parser
 - **Dual output** — SVG for rich UIs, ASCII/Unicode for terminals
 - **Synchronous rendering** — No async, no flash. Works with React `useMemo()`
 - **15 built-in themes** — And dead simple to add your own
@@ -50,11 +48,11 @@ The ASCII rendering engine is based on [mermaid-ascii](https://github.com/Alexan
 ## Installation
 
 ```bash
-npm install beautiful-mermaid
+npm install @sourcey/beautiful-mermaid
 # or
-bun add beautiful-mermaid
+bun add @sourcey/beautiful-mermaid
 # or
-pnpm add beautiful-mermaid
+pnpm add @sourcey/beautiful-mermaid
 ```
 
 ## Quick Start
@@ -62,7 +60,7 @@ pnpm add beautiful-mermaid
 ### SVG Output
 
 ```typescript
-import { renderMermaidSVG } from 'beautiful-mermaid'
+import { renderMermaidSVG } from '@sourcey/beautiful-mermaid'
 
 const svg = renderMermaidSVG(`
   graph TD
@@ -79,7 +77,7 @@ Need async? Use `renderMermaidSVGAsync()` — same output, returns a `Promise<st
 ### ASCII Output
 
 ```typescript
-import { renderMermaidASCII } from 'beautiful-mermaid'
+import { renderMermaidASCII } from '@sourcey/beautiful-mermaid'
 
 const ascii = renderMermaidASCII(`graph LR; A --> B --> C`)
 ```
@@ -94,12 +92,38 @@ const ascii = renderMermaidASCII(`graph LR; A --> B --> C`)
 
 ---
 
+### Rendering what Mermaid reads
+
+`renderMermaidDiagram` draws a diagram Mermaid's own parser has read, so every syntax and directive Mermaid accepts reads as Mermaid reads it, and the diagram is laid out as Mermaid lays it out, then drawn in this renderer's style. Mermaid's parser needs a DOM; in Node, jsdom provides one.
+
+```typescript
+import { JSDOM } from 'jsdom'
+import { renderMermaidDiagram } from '@sourcey/beautiful-mermaid'
+
+const { window } = new JSDOM('')
+Object.assign(globalThis, { window, document: window.document })
+const { default: mermaid } = await import('mermaid')
+mermaid.initialize({ startOnLoad: false })
+
+const { type, db } = await mermaid.mermaidAPI.getDiagramFromText(`
+  graph LR
+    A[Request] --> B{Cached?}
+    B -->|Yes| C[Serve]
+    B -->|No| D[Fetch]
+`)
+const svg = renderMermaidDiagram({ type, db, config: mermaid.mermaidAPI.getConfig() }, {
+  bg: 'var(--bg)', fg: 'var(--fg)', transparent: true,
+})
+```
+
+It draws `flowchart-v2`, `stateDiagram`, `classDiagram`, `er`, `sequence`, `gantt`, `pie` and `mindmap` diagrams, and throws for any other type, so a caller can fall back. Call `mermaid.mermaidAPI.parse(source)` first when the source has frontmatter or a directive, so `config` carries settings such as a Gantt chart's `displayMode: compact`. Pie slices and mindmap branches use CSS `light-dark()`, so the page's `color-scheme` picks their light or dark steps.
+
 ## React Integration
 
 Because rendering is synchronous, you can use `useMemo()` for zero-flash diagram rendering:
 
 ```tsx
-import { renderMermaidSVG } from 'beautiful-mermaid'
+import { renderMermaidSVG } from '@sourcey/beautiful-mermaid'
 
 function MermaidDiagram({ code }: { code: string }) {
   const { svg, error } = React.useMemo(() => {
@@ -224,7 +248,7 @@ const svg = renderMermaidSVG(diagram, {
 | `one-dark` | Dark | `#282c34` | `#c678dd` |
 
 ```typescript
-import { renderMermaidSVG, THEMES } from 'beautiful-mermaid'
+import { renderMermaidSVG, THEMES } from '@sourcey/beautiful-mermaid'
 
 const svg = renderMermaidSVG(diagram, THEMES['tokyo-night'])
 ```
@@ -259,7 +283,7 @@ Use **any VS Code theme** directly via Shiki integration. This gives you access 
 
 ```typescript
 import { getSingletonHighlighter } from 'shiki'
-import { renderMermaidSVG, fromShikiTheme } from 'beautiful-mermaid'
+import { renderMermaidSVG, fromShikiTheme } from '@sourcey/beautiful-mermaid'
 
 // Load any theme from Shiki's registry
 const highlighter = await getSingletonHighlighter({
@@ -437,7 +461,7 @@ The chart renderer follows a clean, minimal design philosophy inspired by Apple 
 For terminal environments, CLI tools, or anywhere you need plain text, render to ASCII or Unicode box-drawing characters:
 
 ```typescript
-import { renderMermaidASCII } from 'beautiful-mermaid'
+import { renderMermaidASCII } from '@sourcey/beautiful-mermaid'
 
 // Unicode mode (default) — prettier box drawing
 const unicode = renderMermaidASCII(`graph LR; A --> B`)
@@ -522,6 +546,10 @@ Render a Mermaid diagram to SVG. Synchronous. Auto-detects diagram type.
 
 **XY Charts:** Diagrams starting with `xychart-beta` are auto-detected — no separate function needed. The `accent` color option drives the chart series color palette.
 
+### `renderMermaidDiagram(parsed, options?): string`
+
+Draw a diagram Mermaid's parser has read. `parsed` is `{ type, db, config? }`: the `type` and `db` of `mermaid.mermaidAPI.getDiagramFromText(text)`, and optionally Mermaid's configuration once the diagram's frontmatter and directives are applied. Takes the same `RenderOptions`, plus `today` (a `Date` or timestamp) to draw a Gantt chart's today marker; without it none is drawn, since a drawing made ahead of time cannot know when it is read. Throws for a type it does not draw.
+
 ### `renderMermaidSVGAsync(text, options?): Promise<string>`
 
 Async version of `renderMermaidSVG()`. Same output, returns a `Promise<string>`. Useful in async server handlers or data loaders.
@@ -560,6 +588,8 @@ Default colors (`#FFFFFF` / `#27272A`).
 ---
 
 ## Attribution
+
+This package is a fork of [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) by [Craft](https://craft.do), MIT licensed. Its renderers for what Mermaid's parser reads port parts of [Mermaid](https://github.com/mermaid-js/mermaid), [dagre-d3-es](https://github.com/tbo47/dagre-es) and [d3](https://github.com/d3); their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The ASCII rendering engine is based on [mermaid-ascii](https://github.com/AlexanderGrooff/mermaid-ascii) by Alexander Grooff. We ported it from Go to TypeScript and extended it with:
 
