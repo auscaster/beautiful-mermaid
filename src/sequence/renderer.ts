@@ -5,6 +5,7 @@ import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, ARROW_HEAD } from '../styles.t
 import { renderMultilineText } from '../multiline-utils.ts'
 import { measureMultilineText } from '../text-metrics.ts'
 import { renderNote as renderNoteShape } from '../renderer.ts'
+import { inkOn } from '../ink.ts'
 import { SEQ, SYMBOL_ACTORS, actorDepth, blockTab, dividerLabel, messageLabelY } from './layout.ts'
 
 // ============================================================================
@@ -56,7 +57,7 @@ export function renderSequenceSvg(
   for (const block of blocks) if (block.type !== 'rect') parts.push(renderBlockLabels(block, behind))
   for (const message of diagram.messages) parts.push(renderMessage(message, behind))
   for (const note of diagram.notes) parts.push(renderNote(note))
-  for (const actor of [...diagram.actors, ...(diagram.footerActors ?? [])]) parts.push(renderActor(actor))
+  for (const actor of [...diagram.actors, ...(diagram.footerActors ?? [])]) parts.push(renderActor(actor, behind))
 
   parts.push('</svg>')
   return parts.join('\n')
@@ -101,13 +102,13 @@ const MARKERS: Record<PositionedMessage['arrowHead'], string | undefined> = {
  * stack for collections), or an actor's, boundary's, control's or entity's
  * symbol with its label under it. Wrapped in <g class="actor"> with semantic data attributes.
  */
-function renderActor(actor: PositionedActor): string {
+function renderActor(actor: PositionedActor, behind: Backdrop): string {
   const { id, x, y, width, height, label, type } = actor
   const parts: string[] = []
   const fill = 'var(--_node-fill)'
   const stroke = 'var(--_node-stroke)'
   const sw = STROKE_WIDTHS.outerBox
-  const labelAttrs = `font-size="${FONT_SIZES.nodeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="var(--_text)"`
+  const labelAttrs = (ink = 'var(--_text)') => `font-size="${FONT_SIZES.nodeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="${ink}"`
 
   // Semantic wrapper with actor metadata
   parts.push(
@@ -117,8 +118,9 @@ function renderActor(actor: PositionedActor): string {
   if (SYMBOL_ACTORS.has(type)) {
     parts.push(renderSymbol(type, x, y, height))
     // Label below the symbol, centred in the room the layout gave it (supports multi-line)
-    const labelTop = y + height + SEQ.actorLabelGap
-    parts.push('  ' + renderMultilineText(label, x, (labelTop + y + actorDepth(actor)) / 2, FONT_SIZES.nodeLabel, labelAttrs))
+    const labelY = (y + height + SEQ.actorLabelGap + y + actorDepth(actor)) / 2
+    // It sits on whatever is behind the actor, which may be a participant box in its author's colour.
+    parts.push('  ' + renderMultilineText(label, x, labelY, FONT_SIZES.nodeLabel, labelAttrs(inkOn(behind(x, labelY)))))
   } else {
     const left = x - width / 2
     const right = x + width / 2
@@ -150,7 +152,7 @@ function renderActor(actor: PositionedActor): string {
       // Participant: rectangle box with label (supports multi-line)
       parts.push(`  <rect x="${left}" y="${y}" width="${width}" height="${height}" rx="4" ry="4" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`)
     }
-    parts.push('  ' + renderMultilineText(label, type === 'collections' ? x - 2 : x, labelY, FONT_SIZES.nodeLabel, labelAttrs))
+    parts.push('  ' + renderMultilineText(label, type === 'collections' ? x - 2 : x, labelY, FONT_SIZES.nodeLabel, labelAttrs()))
   }
 
   parts.push('</g>')
@@ -220,7 +222,8 @@ function renderMessage(msg: PositionedMessage, behind: Backdrop): string {
   const markers = (marker ? ` marker-end="url(#${marker})"` : '') + (marker && msg.bidirectional ? ` marker-start="url(#${marker})"` : '')
   const labelX = msg.isSelf ? msg.x1 + SEQ.selfLoopWidth / 2 : (msg.x1 + msg.x2) / 2
   const labelY = messageLabelY(msg.y, msg.label)
-  const labelAttrs = `font-size="${FONT_SIZES.edgeLabel}" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-sec)" ${halo(behind(labelX, labelY))}`
+  const backing = behind(labelX, labelY)
+  const labelAttrs = `font-size="${FONT_SIZES.edgeLabel}" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="${escapeAttr(inkOn(backing) ?? 'var(--_text-sec)')}" ${halo(backing)}`
 
   // Semantic wrapper with message metadata
   parts.push(
@@ -304,9 +307,10 @@ function renderBlockLabels(block: PositionedBlock, behind: Backdrop): string {
     if (label.text) {
       const x = block.x + SEQ.blockTabPadX
       const y = divider.y + SEQ.dividerGap + label.height / 2
+      const backing = behind(x + label.width / 2, y)
       parts.push(
         '  ' + renderMultilineText(label.text, x, y, FONT_SIZES.edgeLabel,
-          `font-size="${FONT_SIZES.edgeLabel}" text-anchor="start" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-muted)" ${halo(behind(x + label.width / 2, y))}`)
+          `font-size="${FONT_SIZES.edgeLabel}" text-anchor="start" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="${escapeAttr(inkOn(backing) ?? 'var(--_text-muted)')}" ${halo(backing)}`)
       )
     }
   }
@@ -347,7 +351,7 @@ function renderBox(box: NonNullable<PositionedSequenceDiagram['boxes']>[number])
   const height = box.label ? measureMultilineText(box.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.groupHeader).height : 0
   const label = box.label
     ? '\n  ' + renderMultilineText(box.label, box.x + box.width / 2, box.y + (SEQ.boxPad + height + SEQ.boxLabelGap) / 2, FONT_SIZES.edgeLabel,
-      `font-size="${FONT_SIZES.edgeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.groupHeader}" fill="var(--_text-sec)"`)
+      `font-size="${FONT_SIZES.edgeLabel}" text-anchor="middle" font-weight="${FONT_WEIGHTS.groupHeader}" fill="${escapeAttr(inkOn(box.fill) ?? 'var(--_text-sec)')}"`)
     : ''
   return (
     `<g class="box"${box.label ? ` data-label="${escapeAttr(box.label)}"` : ''}>` +

@@ -105,4 +105,23 @@ describe('Mermaid flowcharts', () => {
     expect(graph.width - Math.max(...boxes.map((b) => b.x + b.width))).toBeGreaterThanOrEqual(16 - 1e-9)
     expect(graph.height - Math.max(...boxes.map((b) => b.y + b.height))).toBeGreaterThanOrEqual(16 - 1e-9)
   })
+
+  it('sets text the author gives no colour in near-black or white, whichever reads on the author\'s fill', () => {
+    const data = {
+      direction: 'LR',
+      nodes: [
+        node('pale', 'Pale', { cssCompiledStyles: ['fill:#f3e8ff', 'stroke:#9b59b6'] }),
+        node('deep', 'Deep', { cssCompiledStyles: ['fill:#1b5e20'] }),
+        node('own', 'Own', { cssCompiledStyles: ['fill:#f3e8ff', 'color:#333'] }),
+        node('plain', 'Plain'),
+      ],
+      edges: [],
+    } as unknown as MermaidLayoutData
+    const svg = renderMermaidDiagram({ type: 'flowchart-v2', db: { getData: () => data } })
+    const ink = (label: string) => svg.match(new RegExp(`fill="([^"]+)"[^>]*>${label}<`))?.[1]
+    expect(ink('Pale')).toBe('#0b0b0b')
+    expect(ink('Deep')).toBe('#ffffff')
+    expect(ink('Own')).toBe('#333')
+    expect(ink('Plain')).toBe('var(--_text)')
+  })
 })

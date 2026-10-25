@@ -166,7 +166,7 @@ function renderAttribute(attr: ErAttribute, boxX: number, y: number, columns: Er
   if (attr.comment) {
     parts.push(
       `<text x="${commentX}" y="${y}" dy="${TEXT_BASELINE_SHIFT}" ` +
-      `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}" fill="var(--_text-faint)">${escapeXml(attr.comment)}</text>`
+      `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}" fill="var(--_text-muted)">${escapeXml(attr.comment)}</text>`
     )
   }
   return parts.join('\n')

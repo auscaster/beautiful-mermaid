@@ -5,6 +5,7 @@ import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, ARROW_HEAD, estimateTextWidth,
 import { measureMultilineText } from './text-metrics.ts'
 import { renderMultilineText, renderMultilineTextWithBackground, escapeXml } from './multiline-utils.ts'
 import { DESCRIPTION_GAP, groupHeaderHeight } from './node-size.ts'
+import { inkOn } from './ink.ts'
 
 // ============================================================================
 // SVG renderer — converts a PositionedGraph into an SVG string.
@@ -222,7 +223,7 @@ export function renderGroup(group: PositionedGroup, font: string): string {
         group.x + 12,
         group.y + headerHeight / 2,
         FONT_SIZES.groupHeader,
-        `font-size="${FONT_SIZES.groupHeader}" font-weight="${FONT_WEIGHTS.groupHeader}" fill="${escapeAttr(style?.color ?? 'var(--_text-sec)')}"`
+        `font-size="${FONT_SIZES.groupHeader}" font-weight="${FONT_WEIGHTS.groupHeader}" fill="${escapeAttr(style?.color ?? inkOn(style?.fill) ?? 'var(--_text-sec)')}"`
       )
     )
   }
@@ -712,8 +713,8 @@ function renderNodeLabel(node: PositionedNode, font: string): string {
   const cx = node.x + node.width / 2
   const cy = node.y + node.height / 2
 
-  // Resolve text color — inline styles can override the CSS variable default
-  const textColor = escapeAttr(node.inlineStyle?.color ?? 'var(--_text)')
+  // The author's text colour, or one that reads on the author's fill, or the theme's
+  const textColor = escapeAttr(node.inlineStyle?.color ?? inkOn(node.inlineStyle?.fill) ?? 'var(--_text)')
   const fontSize = Number(node.inlineStyle?.['font-size']?.match(/^(\d+(?:\.\d+)?)(?:px)?$/)?.[1] ?? FONT_SIZES.nodeLabel)
   const attrs = (weight: number) => `text-anchor="middle" font-size="${fontSize}" font-weight="${weight}" fill="${textColor}"`
 
