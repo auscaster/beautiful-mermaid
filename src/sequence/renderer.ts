@@ -15,12 +15,13 @@ import { SEQ, SYMBOL_ACTORS, actorDepth, blockTab, dividerLabel, messageLabelY }
 //
 // Render order (back to front):
 //   1. Participant boxes
-//   2. Block backgrounds (loop/alt/opt)
+//   2. Block frames (rect colours, loop/alt/opt outlines), outermost first
 //   3. Lifelines (dashed vertical lines)
 //   4. Activation boxes
-//   5. Messages (arrows with labels)
-//   6. Notes
-//   7. Actor boxes, at the top and repeated at the bottom
+//   5. Block label tabs and dividers
+//   6. Messages (arrows with labels)
+//   7. Notes
+//   8. Actor boxes, at the top and repeated at the bottom
 // ============================================================================
 
 /**
@@ -45,11 +46,15 @@ export function renderSequenceSvg(
   parts.push(arrowMarkerDefs())
   parts.push('</defs>')
 
+  // A block holds the blocks inside it, so the larger is drawn first.
+  const blocks = [...diagram.blocks].sort((a, b) => b.width * b.height - a.width * a.height)
+  const behind = backdrop(diagram, blocks)
   for (const box of diagram.boxes ?? []) parts.push(renderBox(box))
-  for (const block of diagram.blocks) parts.push(renderBlock(block))
+  for (const block of blocks) parts.push(renderBlockFrame(block))
   for (const lifeline of diagram.lifelines) parts.push(renderLifeline(lifeline))
   for (const activation of diagram.activations) parts.push(renderActivation(activation))
-  for (const message of diagram.messages) parts.push(renderMessage(message))
+  for (const block of blocks) if (block.type !== 'rect') parts.push(renderBlockLabels(block, behind))
+  for (const message of diagram.messages) parts.push(renderMessage(message, behind))
   for (const note of diagram.notes) parts.push(renderNote(note))
   for (const actor of [...diagram.actors, ...(diagram.footerActors ?? [])]) parts.push(renderActor(actor))
 
@@ -208,13 +213,14 @@ function renderActivation(activation: Activation): string {
  * Render a message arrow with label.
  * Wrapped in <g class="message"> with semantic data attributes.
  */
-function renderMessage(msg: PositionedMessage): string {
+function renderMessage(msg: PositionedMessage, behind: Backdrop): string {
   const parts: string[] = []
   const dashArray = msg.lineStyle === 'dashed' ? ' stroke-dasharray="6 4"' : ''
   const marker = MARKERS[msg.arrowHead]
   const markers = (marker ? ` marker-end="url(#${marker})"` : '') + (marker && msg.bidirectional ? ` marker-start="url(#${marker})"` : '')
-  // A halo in the background colour keeps the lifelines a label crosses from striking through it.
-  const labelAttrs = `font-size="${FONT_SIZES.edgeLabel}" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-sec)" stroke="var(--bg)" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`
+  const labelX = msg.isSelf ? msg.x1 + SEQ.selfLoopWidth / 2 : (msg.x1 + msg.x2) / 2
+  const labelY = messageLabelY(msg.y, msg.label)
+  const labelAttrs = `font-size="${FONT_SIZES.edgeLabel}" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-sec)" ${halo(behind(labelX, labelY))}`
 
   // Semantic wrapper with message metadata
   parts.push(
@@ -231,14 +237,14 @@ function renderMessage(msg: PositionedMessage): string {
       `  <polyline points="${msg.x1},${msg.y} ${msg.x1 + loopW},${msg.y} ${msg.x1 + loopW},${msg.y + loopH} ${msg.x2},${msg.y + loopH}" ` +
       `fill="none" stroke="var(--_line)" stroke-width="${STROKE_WIDTHS.connector}"${dashArray}${markers} />`
     )
-    if (msg.label) parts.push('  ' + renderMultilineText(msg.label, msg.x1 + loopW / 2, messageLabelY(msg.y, msg.label), FONT_SIZES.edgeLabel, `text-anchor="middle" ${labelAttrs}`))
+    if (msg.label) parts.push('  ' + renderMultilineText(msg.label, labelX, labelY, FONT_SIZES.edgeLabel, `text-anchor="middle" ${labelAttrs}`))
   } else {
     // Normal message: horizontal arrow, its label's last line just above it
     parts.push(
       `  <line x1="${msg.x1}" y1="${msg.y}" x2="${msg.x2}" y2="${msg.y}" ` +
       `stroke="var(--_line)" stroke-width="${STROKE_WIDTHS.connector}"${dashArray}${markers} />`
     )
-    if (msg.label) parts.push('  ' + renderMultilineText(msg.label, (msg.x1 + msg.x2) / 2, messageLabelY(msg.y, msg.label), FONT_SIZES.edgeLabel, `text-anchor="middle" ${labelAttrs}`))
+    if (msg.label) parts.push('  ' + renderMultilineText(msg.label, labelX, labelY, FONT_SIZES.edgeLabel, `text-anchor="middle" ${labelAttrs}`))
   }
 
   // Autonumber: the message's number in a disc where it leaves its lifeline
@@ -254,32 +260,29 @@ function renderMessage(msg: PositionedMessage): string {
 }
 
 /**
- * Render a block background (loop/alt/opt).
- * Wrapped in <g class="block"> with semantic data attributes.
+ * A block's frame: a rect block's background in its author's colour, or the
+ * outline of a loop, alt, opt and the like.
  */
-function renderBlock(block: PositionedBlock): string {
-  // A rect block is a background in the author's colour, behind what it holds.
-  if (block.type === 'rect') {
-    return (
-      `<g class="block" data-type="rect">` +
-      `\n  <rect x="${block.x}" y="${block.y}" width="${block.width}" height="${block.height}" fill="${escapeAttr(block.fill ?? 'var(--_group-hdr)')}" stroke="none" />` +
-      `\n</g>`
-    )
-  }
+function renderBlockFrame(block: PositionedBlock): string {
+  const labelAttr = block.label ? ` data-label="${escapeAttr(block.label)}"` : ''
+  const paint = block.type === 'rect'
+    ? `fill="${escapeAttr(block.fill ?? 'var(--_group-hdr)')}" stroke="none"`
+    : `fill="none" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.outerBox}"`
+  return (
+    `<g class="block" data-type="${escapeAttr(block.type)}"${labelAttr}>` +
+    `\n  <rect x="${block.x}" y="${block.y}" width="${block.width}" height="${block.height}" ${paint} />` +
+    `\n</g>`
+  )
+}
+
+/**
+ * A block's label tab and its else/and dividers, drawn over the lifelines
+ * that pass through the block.
+ */
+function renderBlockLabels(block: PositionedBlock, behind: Backdrop): string {
   const parts: string[] = []
   const tab = blockTab(block.type, block.label)
-
-  // Semantic wrapper with block metadata
-  const labelAttr = block.label ? ` data-label="${escapeAttr(block.label)}"` : ''
-  parts.push(
-    `<g class="block" data-type="${escapeAttr(block.type)}"${labelAttr}>`
-  )
-
-  // Outer rectangle
-  parts.push(
-    `  <rect x="${block.x}" y="${block.y}" width="${block.width}" height="${block.height}" ` +
-    `rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.outerBox}" />`
-  )
+  parts.push(`<g class="block-labels" data-type="${escapeAttr(block.type)}">`)
 
   // Type label tab (top-left corner), as tall and wide as its lines
   parts.push(
@@ -299,9 +302,11 @@ function renderBlock(block: PositionedBlock): string {
     )
     const label = dividerLabel(divider.label)
     if (label.text) {
+      const x = block.x + SEQ.blockTabPadX
+      const y = divider.y + SEQ.dividerGap + label.height / 2
       parts.push(
-        '  ' + renderMultilineText(label.text, block.x + SEQ.blockTabPadX, divider.y + SEQ.dividerGap + label.height / 2, FONT_SIZES.edgeLabel,
-          `font-size="${FONT_SIZES.edgeLabel}" text-anchor="start" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-muted)"`)
+        '  ' + renderMultilineText(label.text, x, y, FONT_SIZES.edgeLabel,
+          `font-size="${FONT_SIZES.edgeLabel}" text-anchor="start" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-muted)" ${halo(behind(x + label.width / 2, y))}`)
       )
     }
   }
@@ -332,9 +337,12 @@ function renderNote(note: PositionedNote): string {
   )
 }
 
+/** A participant box's colour when its author gives it none. */
+const BOX_FILL = 'color-mix(in srgb, var(--fg) 3%, var(--bg))'
+
 /** A box grouping participants (`box Label ... end`), its label at its top. */
 function renderBox(box: NonNullable<PositionedSequenceDiagram['boxes']>[number]): string {
-  const fill = box.fill ? escapeAttr(box.fill) : 'color-mix(in srgb, var(--fg) 3%, var(--bg))'
+  const fill = box.fill ? escapeAttr(box.fill) : BOX_FILL
   // The label sits midway between the box's top and its actors.
   const height = box.label ? measureMultilineText(box.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.groupHeader).height : 0
   const label = box.label
@@ -352,6 +360,26 @@ function renderBox(box: NonNullable<PositionedSequenceDiagram['boxes']>[number])
 // ============================================================================
 // Utilities
 // ============================================================================
+
+/** The colour behind a point: the innermost rect block or participant box over it, or the page. */
+type Backdrop = (x: number, y: number) => string
+
+function backdrop(diagram: PositionedSequenceDiagram, outermostFirst: PositionedBlock[]): Backdrop {
+  const within = (item: { x: number; y: number; width: number; height: number }, x: number, y: number) =>
+    x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height
+  return (x, y) => {
+    const rect = [...outermostFirst].reverse().find((block) => block.type === 'rect' && within(block, x, y))
+    if (rect) return rect.fill ?? 'var(--_group-hdr)'
+    const box = diagram.boxes?.find((item) => within(item, x, y))
+    if (box) return box.fill ?? BOX_FILL
+    return 'var(--bg)'
+  }
+}
+
+/** A halo in the colour behind a label keeps the lifelines it crosses from striking through it. */
+function halo(color: string): string {
+  return `stroke="${escapeAttr(color)}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`
+}
 
 /**
  * Escape a string for use as an XML/HTML attribute value.
