@@ -10,6 +10,7 @@
 //   - Sequence diagrams (sequenceDiagram)
 //   - Class diagrams (classDiagram)
 //   - ER diagrams (erDiagram)
+//   - Gantt charts, pie charts and mindmaps, as Mermaid's parser reads them
 //
 // Theming uses CSS custom properties (--bg, --fg, + optional enrichment).
 // See src/theme.ts for the full variable system.
@@ -48,6 +49,15 @@ import { layoutMermaidGraph } from './mermaid/graph.ts'
 import { layoutMermaidClass } from './mermaid/class.ts'
 import { layoutMermaidEr } from './mermaid/er.ts'
 import { mermaidSequence, type MermaidSequenceDb } from './mermaid/sequence.ts'
+import { mermaidGantt, type MermaidGanttConfig, type MermaidGanttDb } from './mermaid/gantt.ts'
+import { layoutGantt } from './gantt/layout.ts'
+import { renderGanttSvg } from './gantt/renderer.ts'
+import { mermaidPie, type MermaidPieDb } from './mermaid/pie.ts'
+import { layoutPie } from './pie/layout.ts'
+import { renderPieSvg } from './pie/renderer.ts'
+import { mermaidMindmap, type MermaidMindmapDb } from './mermaid/mindmap.ts'
+import { layoutMindmap } from './mindmap/layout.ts'
+import { renderMindmapSvg } from './mindmap/renderer.ts'
 import type { MermaidLayoutData, ParsedMermaidDiagram } from './mermaid/types.ts'
 import { parseXYChart } from './xychart/parser.ts'
 import { layoutXYChart } from './xychart/layout.ts'
@@ -210,6 +220,16 @@ export function renderMermaidDiagram(
     }
     case 'sequence': {
       return renderSequenceSvg(layoutSequenceDiagram(mermaidSequence(parsed.db as MermaidSequenceDb), options), colors, font, transparent, embedFonts)
+    }
+    case 'gantt': {
+      const today = options.today === undefined ? undefined : +options.today
+      return renderGanttSvg(layoutGantt(mermaidGantt(parsed.db as MermaidGanttDb, parsed.config?.gantt as MermaidGanttConfig, today)), colors, font, transparent, embedFonts)
+    }
+    case 'pie': {
+      return renderPieSvg(layoutPie(mermaidPie(parsed.db as MermaidPieDb)), colors, font, transparent, embedFonts)
+    }
+    case 'mindmap': {
+      return renderMindmapSvg(layoutMindmap(mermaidMindmap(parsed.db as MermaidMindmapDb)), colors, font, transparent, embedFonts)
     }
     default:
       throw new Error(`Diagram type "${parsed.type}" is not supported`)

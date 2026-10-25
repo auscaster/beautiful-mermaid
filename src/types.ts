@@ -188,4 +188,9 @@ export interface RenderOptions {
   transparent?: boolean
   /** Enable hover tooltips on chart data points (xychart only). Default: false */
   interactive?: boolean
+  /**
+   * The moment a Gantt chart's today marker marks. A drawing made ahead of
+   * time cannot know when it is read, so without one no marker is drawn.
+   */
+  today?: Date | number
 }

@@ -11,6 +11,12 @@ export interface ParsedMermaidDiagram {
   /** Mermaid's diagram type: `flowchart-v2`, `stateDiagram`, `classDiagram`, `er`, `sequence`, `gantt`, ... */
   type: string
   db: unknown
+  /**
+   * Mermaid's configuration once the diagram's frontmatter and directives are
+   * applied (`mermaid.mermaidAPI.getConfig()` after `mermaid.parse(text)`),
+   * for the settings a diagram's database leaves out, such as a Gantt chart's `displayMode`.
+   */
+  config?: { gantt?: Record<string, unknown> }
 }
 
 export interface MermaidLayoutData {
