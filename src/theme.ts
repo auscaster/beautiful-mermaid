@@ -64,10 +64,10 @@ export const DEFAULTS: Readonly<{ bg: string; fg: string }> = {
 export const MIX = {
   /** Primary text: near-full fg */
   text:         100, // just use --fg directly
-  /** Secondary text (group headers): fg mixed at 60% */
-  textSec:      60,
-  /** Muted text (edge labels, notes): fg mixed at 40% */
-  textMuted:    40,
+  /** Secondary text (group headers, edge labels): fg mixed at 70%, 5.9:1 on white */
+  textSec:      70,
+  /** Muted text (types, relationship labels): fg mixed at 65%, still 5:1 on white (WCAG AA) */
+  textMuted:    65,
   /** Faint text (de-emphasized): fg mixed at 25% */
   textFaint:    25,
   /** Edge/connector lines: fg mixed at 50% for clear visibility */
