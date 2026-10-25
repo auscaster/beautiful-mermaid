@@ -10,7 +10,7 @@
 //   - Sequence diagrams (sequenceDiagram)
 //   - Class diagrams (classDiagram)
 //   - ER diagrams (erDiagram)
-//   - Gantt charts, pie charts and mindmaps, as Mermaid's parser reads them
+//   - Gantt charts, pie charts, mindmaps and git graphs, as Mermaid's parser reads them
 //
 // Theming uses CSS custom properties (--bg, --fg, + optional enrichment).
 // See src/theme.ts for the full variable system.
@@ -56,6 +56,9 @@ import { mermaidPie, type MermaidPieDb } from './mermaid/pie.ts'
 import { layoutPie } from './pie/layout.ts'
 import { renderPieSvg } from './pie/renderer.ts'
 import { mermaidMindmap, type MermaidMindmapDb } from './mermaid/mindmap.ts'
+import { mermaidGitGraph, type MermaidGitGraphDb } from './mermaid/gitgraph.ts'
+import { layoutGitGraph } from './gitgraph/layout.ts'
+import { renderGitGraphSvg } from './gitgraph/renderer.ts'
 import { layoutMindmap } from './mindmap/layout.ts'
 import { renderMindmapSvg } from './mindmap/renderer.ts'
 import type { MermaidLayoutData, ParsedMermaidDiagram } from './mermaid/types.ts'
@@ -230,6 +233,9 @@ export function renderMermaidDiagram(
     }
     case 'mindmap': {
       return renderMindmapSvg(layoutMindmap(mermaidMindmap(parsed.db as MermaidMindmapDb)), colors, font, transparent, embedFonts)
+    }
+    case 'gitGraph': {
+      return renderGitGraphSvg(layoutGitGraph(mermaidGitGraph(parsed.db as MermaidGitGraphDb)), colors, font, transparent, embedFonts)
     }
     default:
       throw new Error(`Diagram type "${parsed.type}" is not supported`)

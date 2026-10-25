@@ -13,7 +13,7 @@ Ultra-fast, fully themeable, zero DOM dependencies. Built for the AI era.
 
 </div>
 
-> This is [Sourcey](https://sourcey.com)'s fork of [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) by [Craft](https://craft.do). Besides the original's renderer, it draws any diagram Mermaid's own parser reads, laid out as Mermaid lays it out: flowcharts, state, class, ER, sequence, Gantt, pie and mindmap diagrams. See [Rendering what Mermaid reads](#rendering-what-mermaid-reads).
+> This is [Sourcey](https://sourcey.com)'s fork of [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid) by [Craft](https://craft.do). Besides the original's renderer, it draws any diagram Mermaid's own parser reads, laid out as Mermaid lays it out: flowcharts, state, class, ER, sequence, Gantt, pie, mindmap and git graph diagrams. See [Rendering what Mermaid reads](#rendering-what-mermaid-reads).
 
 ---
 
@@ -35,7 +35,7 @@ The ASCII rendering engine is based on [mermaid-ascii](https://github.com/Alexan
 
 ## Features
 
-- **9 diagram types** — Flowcharts, State, Sequence, Class, ER, and XY Charts (bar, line, combined), plus Gantt, pie and mindmap diagrams through Mermaid's parser
+- **9 diagram types** — Flowcharts, State, Sequence, Class, ER, and XY Charts (bar, line, combined), plus Gantt, pie, mindmap and git graph diagrams through Mermaid's parser
 - **Dual output** — SVG for rich UIs, ASCII/Unicode for terminals
 - **Synchronous rendering** — No async, no flash. Works with React `useMemo()`
 - **15 built-in themes** — And dead simple to add your own
@@ -116,7 +116,7 @@ const svg = renderMermaidDiagram({ type, db, config: mermaid.mermaidAPI.getConfi
 })
 ```
 
-It draws `flowchart-v2`, `stateDiagram`, `classDiagram`, `er`, `sequence`, `gantt`, `pie` and `mindmap` diagrams, and throws for any other type, so a caller can fall back. Call `mermaid.mermaidAPI.parse(source)` first when the source has frontmatter or a directive, so `config` carries settings such as a Gantt chart's `displayMode: compact`. Pie slices and mindmap branches use CSS `light-dark()`, so the page's `color-scheme` picks their light or dark steps.
+It draws `flowchart-v2`, `stateDiagram`, `classDiagram`, `er`, `sequence`, `gantt`, `pie`, `mindmap` and `gitGraph` diagrams, and throws for any other type, so a caller can fall back. Call `mermaid.mermaidAPI.parse(source)` first when the source has frontmatter or a directive, so `config` carries settings such as a Gantt chart's `displayMode: compact`. Pie slices, mindmap branches and git graph branches use CSS `light-dark()`, so the page's `color-scheme` picks their light or dark steps.
 
 ## React Integration
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Git graphs (`gitGraph`) from Mermaid's reading, laid out as Mermaid lays
+  them out: a lane per branch in its order, commits a step apart in the order
+  made or after their latest parent with `parallelCommits`, left to right, top
+  to bottom or bottom to top. A branch joins its parent with a curve and a
+  merge leaves the merged lane, along a lane of its own where a commit stands
+  in the way. Each branch takes the next categorical colour; merges, reverts,
+  highlights and cherry-picks have marks of their own, ids slant under their
+  commits with a halo of the page's colour, and tags stack above them.
+
 ## 1.1.4 - 2026-10-25
 
 The first release of `@sourcey/beautiful-mermaid`, Sourcey's fork of
