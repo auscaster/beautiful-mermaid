@@ -21,9 +21,9 @@ export function normalizeBrTags(label: string): string {
     .replace(/\\n/g, '\n')
     .replace(/<\/?(?:sub|sup|small|mark)\s*>/gi, '')
     // Markdown formatting → HTML tags (order matters: ** before *)
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>')
     .replace(/(?<!\*)\*([^\s*](?:[^*]*[^\s*])?)\*(?!\*)/g, '<i>$1</i>')
-    .replace(/~~(.+?)~~/g, '<s>$1</s>')
+    .replace(/~~([\s\S]+?)~~/g, '<s>$1</s>')
 }
 
 /**
@@ -97,6 +97,27 @@ function parseInlineFormatting(line: string): StyledSegment[] {
   return segments
 }
 
+/**
+ * Lines with each one's emphasis whole: a tag left open at a line's end is
+ * closed there and opened again at the next line's start, as `<b>one\ntwo</b>`
+ * reads bold on both lines.
+ */
+function carryFormatting(lines: string[]): string[] {
+  const open: string[] = []
+  return lines.map((line) => {
+    const start = open.map((tag) => `<${tag}>`).join('')
+    for (const match of line.matchAll(/<(\/)?(b|strong|i|em|u|s|del)\s*>/gi)) {
+      const tag = match[2]!.toLowerCase()
+      if (!match[1]) open.push(tag)
+      else {
+        const at = open.lastIndexOf(tag)
+        if (at >= 0) open.splice(at, 1)
+      }
+    }
+    return start + line + [...open].reverse().map((tag) => `</${tag}>`).join('')
+  })
+}
+
 /** Check if a line contains any formatting tags */
 const HAS_FORMAT_TAGS = /<\/?(?:b|strong|i|em|u|s|del)\s*>/i
 
@@ -159,7 +180,7 @@ export function renderMultilineText(
   attrs: string,
   baselineShift: number = 0.35
 ): string {
-  const lines = text.split('\n')
+  const lines = carryFormatting(text.split('\n'))
 
   // Single line — simple text element
   if (lines.length === 1) {
@@ -172,8 +193,15 @@ export function renderMultilineText(
   // First line dy: shift up by (n-1)/2 line heights, then add baseline shift
   const firstDy = -((lines.length - 1) / 2) * lineHeight + fontSize * baselineShift
 
+  // An empty line draws nothing, and an empty tspan moves nothing, so its height carries to the next line.
+  let carried = 0
   const tspans = lines.map((line, i) => {
-    const dy = i === 0 ? firstDy : lineHeight
+    const dy = carried + (i === 0 ? firstDy : lineHeight)
+    if (!stripFormattingTags(line).trim()) {
+      carried = dy
+      return ''
+    }
+    carried = 0
     return `<tspan x="${cx}" dy="${dy}">${renderLineContent(line)}</tspan>`
   }).join('')
 

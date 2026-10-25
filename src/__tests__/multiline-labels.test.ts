@@ -15,7 +15,7 @@ import { parseClassDiagram } from '../class/parser.ts'
 import { parseErDiagram } from '../er/parser.ts'
 import { measureMultilineText, LINE_HEIGHT_RATIO, measureTextWidth } from '../text-metrics.ts'
 import { renderMermaid } from '../index.ts'
-import { normalizeBrTags, stripFormattingTags } from '../multiline-utils.ts'
+import { normalizeBrTags, renderMultilineText, stripFormattingTags } from '../multiline-utils.ts'
 
 // ============================================================================
 // Parser: <br> tag normalization
@@ -446,8 +446,10 @@ describe('renderMermaid – ER diagram multi-line', () => {
 describe('renderMermaid – edge cases', () => {
   it('handles consecutive <br><br> tags (empty lines)', async () => {
     const svg = await renderMermaid('graph TD\n  A[Line1<br><br>Line3]')
-    const tspanMatches = svg.match(/<tspan/g)
-    expect(tspanMatches).toHaveLength(3)
+    const dys = [...svg.matchAll(/<tspan x="[\d.]+" dy="([-\d.]+)">/g)].map((m) => Number(m[1]))
+    // Line3 sits two lines below Line1: the empty line keeps its room.
+    expect(dys).toHaveLength(2)
+    expect(dys[1]).toBeCloseTo(13 * LINE_HEIGHT_RATIO * 2)
   })
 
   it('handles very long single line with <br>', async () => {
@@ -843,3 +845,21 @@ function extractFirstRectWidth(svg: string): number {
   const match = svg.match(/<rect[^>]*width="(\d+(?:\.\d+)?)"/)
   return match ? parseFloat(match[1]!) : 0
 }
+
+describe('renderMultilineText – blank lines and emphasis across lines', () => {
+  it('keeps a blank line\'s room, which an empty tspan would not move', () => {
+    const svg = renderMultilineText('One\n\nThree', 0, 0, 10, '')
+    const dys = [...svg.matchAll(/<tspan x="0" dy="([-\d.]+)">/g)].map((m) => Number(m[1]))
+    expect(dys).toHaveLength(2)
+    // The third line sits two lines below the first.
+    expect(dys[1]).toBeCloseTo(10 * LINE_HEIGHT_RATIO * 2)
+  })
+
+  it('carries emphasis open at a line break onto the next line', () => {
+    const label = normalizeBrTags('**Spaces, Rooms,<br/>Nodes, Settings** and more')
+    const svg = renderMultilineText(label, 0, 0, 10, '')
+    expect(svg).not.toContain('**')
+    expect(svg.match(/<tspan font-weight="bold">/g)).toHaveLength(2)
+    expect(svg).toContain('<tspan font-weight="bold">Nodes, Settings</tspan> and more')
+  })
+})
