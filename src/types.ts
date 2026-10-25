@@ -42,6 +42,10 @@ export type NodeShape =
   // Batch 3 state diagram pseudostates
   | 'state-start'    // filled circle (start pseudostate)
   | 'state-end'      // bullseye circle (end pseudostate)
+  // Mermaid's other classic flowchart shapes
+  | 'lean-right'     // [/text/]  — parallelogram leaning right
+  | 'lean-left'      // [\text\]  — parallelogram leaning left
+  | 'document'       // @{ shape: doc } — wavy bottom edge
 
 export interface MermaidEdge {
   source: string
@@ -54,7 +58,10 @@ export interface MermaidEdge {
   hasArrowEnd: boolean
 }
 
-export type EdgeStyle = 'solid' | 'dotted' | 'thick'
+export type EdgeStyle = 'solid' | 'dotted' | 'thick' | 'invisible'
+
+/** How an edge's end is drawn: Mermaid's arrow (`-->`), circle (`--o`) or cross (`--x`). */
+export type ArrowKind = 'arrow' | 'circle' | 'cross'
 
 export interface MermaidSubgraph {
   id: string
@@ -102,6 +109,11 @@ export interface PositionedEdge {
   labelPosition?: Point
   /** Inline styles resolved from `linkStyle` directives — override theme defaults */
   inlineStyle?: Record<string, string>
+  /** Draw the path as a curve through its points (Mermaid's basis curve) rather than straight segments. */
+  curved?: boolean
+  /** What each end draws, when it is not the default arrow. */
+  arrowStartKind?: ArrowKind
+  arrowEndKind?: ArrowKind
 }
 
 export interface Point {
@@ -117,6 +129,8 @@ export interface PositionedGroup {
   width: number
   height: number
   children: PositionedGroup[]
+  /** The author's styles for the subgraph (classDef or `style`), over the theme's */
+  inlineStyle?: Record<string, string>
 }
 
 // ============================================================================

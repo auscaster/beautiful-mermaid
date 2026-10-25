@@ -20,6 +20,7 @@
 // ============================================================================
 
 export type { RenderOptions, MermaidGraph, PositionedGraph } from './types.ts'
+export type { ParsedMermaidDiagram, MermaidLayoutData } from './mermaid/types.ts'
 export type { DiagramColors, ThemeName } from './theme.ts'
 export { fromShikiTheme, THEMES, DEFAULTS } from './theme.ts'
 export { parseMermaid } from './parser.ts'
@@ -43,6 +44,8 @@ import { renderClassSvg } from './class/renderer.ts'
 import { parseErDiagram } from './er/parser.ts'
 import { layoutErDiagramSync } from './er/layout.ts'
 import { renderErSvg } from './er/renderer.ts'
+import { layoutMermaidFlowchart } from './mermaid/flowchart.ts'
+import type { MermaidLayoutData, ParsedMermaidDiagram } from './mermaid/types.ts'
 import { parseXYChart } from './xychart/parser.ts'
 import { layoutXYChart } from './xychart/layout.ts'
 import { renderXYChartSvg } from './xychart/renderer.ts'
@@ -151,6 +154,44 @@ export function renderMermaidSVG(
       const positioned = layoutGraphSync(graph, options)
       return renderSvg(positioned, colors, font, transparent, embedFonts)
     }
+  }
+}
+
+/**
+ * Render a diagram that Mermaid's own parser has read — the result of
+ * `mermaid.mermaidAPI.getDiagramFromText(text)` — to an SVG string.
+ *
+ * Mermaid's parser decides what the source says, so every syntax Mermaid
+ * accepts reads as Mermaid reads it, and the diagram is arranged as Mermaid
+ * arranges it (dagre, with Mermaid's clusters), then drawn in this renderer's
+ * style. The caller runs Mermaid; this package does not import it.
+ *
+ * @throws when the diagram's type is not one this renderer draws
+ */
+export function renderMermaidDiagram(
+  parsed: ParsedMermaidDiagram,
+  options: RenderOptions = {}
+): string {
+  const colors = buildColors(options)
+  const font = options.font ?? 'Inter'
+  const transparent = options.transparent ?? false
+  const embedFonts = options.embedFonts ?? true
+  const db = parsed.db as { getData?: () => MermaidLayoutData; getDirection?: () => string }
+  // Mermaid's spacing (50px between nodes and between ranks) is for its 16px text; these keep
+  // the same proportions at this renderer's 13px.
+  const spacing = { padding: options.padding ?? 16, nodeSpacing: options.nodeSpacing ?? 40, rankSpacing: options.layerSpacing ?? 40 }
+
+  switch (parsed.type) {
+    case 'flowchart-v2':
+    case 'flowchart': {
+      if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
+      const data = db.getData()
+      // A flowchart's direction stays on its database; Mermaid's renderer adds it to the layout data.
+      const positioned = layoutMermaidFlowchart({ ...data, direction: data.direction ?? db.getDirection?.() }, spacing)
+      return renderSvg(positioned, colors, font, transparent, embedFonts)
+    }
+    default:
+      throw new Error(`Diagram type "${parsed.type}" is not supported`)
   }
 }
 

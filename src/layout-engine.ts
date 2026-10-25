@@ -33,6 +33,7 @@ import { FONT_SIZES, FONT_WEIGHTS, NODE_PADDING, ARROW_HEAD } from './styles.ts'
 import { measureMultilineText } from './text-metrics.ts'
 import { elkLayoutSync } from './elk-instance.ts'
 import { clipEdgeToShape } from './shape-clipping.ts'
+import { estimateNodeSize } from './node-size.ts'
 
 // ============================================================================
 // Layout options
@@ -58,54 +59,6 @@ function directionToElk(dir: MermaidGraph['direction']): string {
     case 'TB':
     default: return 'DOWN'
   }
-}
-
-// ============================================================================
-// Node sizing (same logic as Dagre adapter)
-// ============================================================================
-
-function estimateNodeSize(id: string, label: string, shape: string): { width: number; height: number } {
-  const metrics = measureMultilineText(label, FONT_SIZES.nodeLabel, FONT_WEIGHTS.nodeLabel)
-
-  let width = metrics.width + NODE_PADDING.horizontal * 2
-  let height = metrics.height + NODE_PADDING.vertical * 2
-
-  if (shape === 'diamond') {
-    const side = Math.max(width, height) + NODE_PADDING.diamondExtra
-    width = side
-    height = side
-  }
-
-  if (shape === 'circle' || shape === 'doublecircle') {
-    const diameter = Math.ceil(Math.sqrt(width * width + height * height)) + 8
-    width = shape === 'doublecircle' ? diameter + 12 : diameter
-    height = width
-  }
-
-  if (shape === 'hexagon') {
-    width += NODE_PADDING.horizontal
-  }
-
-  if (shape === 'trapezoid' || shape === 'trapezoid-alt') {
-    width += NODE_PADDING.horizontal
-  }
-
-  if (shape === 'asymmetric') {
-    width += 12
-  }
-
-  if (shape === 'cylinder') {
-    height += 14
-  }
-
-  if (shape === 'state-start' || shape === 'state-end') {
-    return { width: 28, height: 28 }
-  }
-
-  width = Math.max(width, 60)
-  height = Math.max(height, 36)
-
-  return { width, height }
 }
 
 // ============================================================================
@@ -262,7 +215,7 @@ function mermaidToElk(
   // Add top-level nodes (those not in any subgraph)
   for (const [id, node] of graph.nodes) {
     if (!subgraphNodeIds.has(id) && !subgraphIds.has(id)) {
-      const size = estimateNodeSize(id, node.label, node.shape)
+      const size = estimateNodeSize(node.label, node.shape)
       elkGraph.children!.push({
         id,
         width: size.width,
@@ -384,7 +337,7 @@ function subgraphToElk(
   for (const nodeId of sg.nodeIds) {
     const node = graph.nodes.get(nodeId)
     if (node) {
-      const size = estimateNodeSize(nodeId, node.label, node.shape)
+      const size = estimateNodeSize(node.label, node.shape)
       elkNode.children!.push({
         id: nodeId,
         width: size.width,

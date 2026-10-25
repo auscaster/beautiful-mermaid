@@ -4,6 +4,7 @@ import { svgOpenTag, buildStyleBlock } from './theme.ts'
 import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, ARROW_HEAD, estimateTextWidth, TEXT_BASELINE_SHIFT } from './styles.ts'
 import { measureMultilineText } from './text-metrics.ts'
 import { renderMultilineText, renderMultilineTextWithBackground, escapeXml } from './multiline-utils.ts'
+import { groupHeaderHeight } from './node-size.ts'
 
 // ============================================================================
 // SVG renderer — converts a PositionedGraph into an SVG string.
@@ -46,6 +47,8 @@ export function renderSvg(
   parts.push(buildStyleBlock(font, false, embedFonts))
   parts.push('<defs>')
   parts.push(arrowMarkerDefs())
+  const usesEndKinds = graph.edges.some(edge => edge.arrowStartKind || edge.arrowEndKind)
+  if (usesEndKinds) parts.push(endKindMarkerDefs('var(--_arrow)', ''))
   // Per-color arrow markers for edges with custom stroke via linkStyle
   const customStrokeColors = new Set<string>()
   for (const edge of graph.edges) {
@@ -55,6 +58,7 @@ export function renderSvg(
   }
   for (const color of customStrokeColors) {
     parts.push(arrowMarkerDefsForColor(color))
+    if (usesEndKinds) parts.push(endKindMarkerDefs(escapeAttr(color), `-${markerSuffix(color)}`))
   }
   parts.push('</defs>')
 
@@ -136,6 +140,29 @@ function arrowMarkerDefsForColor(color: string): string {
   )
 }
 
+/**
+ * Circle (`--o`) and cross (`--x`) end markers, drawn as Mermaid draws them at
+ * the end of the line: a hollow ring and an x the line's own width.
+ */
+function endKindMarkerDefs(color: string, suffix: string): string {
+  const size = 10
+  const half = size / 2
+  return (
+    `  <marker id="circle-end${suffix}" markerWidth="${size}" markerHeight="${size}" refX="${size - 1}" refY="${half}" orient="auto" markerUnits="userSpaceOnUse">` +
+    `\n    <circle cx="${half}" cy="${half}" r="${half - 1.5}" fill="var(--bg)" stroke="${color}" stroke-width="1.25" />` +
+    `\n  </marker>` +
+    `\n  <marker id="circle-start${suffix}" markerWidth="${size}" markerHeight="${size}" refX="1" refY="${half}" orient="auto" markerUnits="userSpaceOnUse">` +
+    `\n    <circle cx="${half}" cy="${half}" r="${half - 1.5}" fill="var(--bg)" stroke="${color}" stroke-width="1.25" />` +
+    `\n  </marker>` +
+    `\n  <marker id="cross-end${suffix}" markerWidth="${size}" markerHeight="${size}" refX="${half}" refY="${half}" orient="auto" markerUnits="userSpaceOnUse">` +
+    `\n    <path d="M 2 2 L ${size - 2} ${size - 2} M ${size - 2} 2 L 2 ${size - 2}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" />` +
+    `\n  </marker>` +
+    `\n  <marker id="cross-start${suffix}" markerWidth="${size}" markerHeight="${size}" refX="${half}" refY="${half}" orient="auto" markerUnits="userSpaceOnUse">` +
+    `\n    <path d="M 2 2 L ${size - 2} ${size - 2} M ${size - 2} 2 L 2 ${size - 2}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" />` +
+    `\n  </marker>`
+  )
+}
+
 /** Sanitize a color value into a collision-free SVG ID suffix.
  *  Non-alphanumeric chars are hex-encoded so distinct inputs never collapse
  *  (e.g. "var(--line-1)" → "var28--line2d129", "var(--line1)" → "var28--line129"). */
@@ -148,7 +175,7 @@ function markerSuffix(color: string): string {
 // ============================================================================
 
 function renderGroup(group: PositionedGroup, font: string): string {
-  const headerHeight = FONT_SIZES.groupHeader + 16
+  const headerHeight = groupHeaderHeight(group.label)
   const parts: string[] = []
 
   // Opening <g> with semantic attributes for subgraph identification
@@ -158,28 +185,37 @@ function renderGroup(group: PositionedGroup, font: string): string {
     `<g class="subgraph" data-id="${escapeAttr(group.id)}" data-label="${escapeAttr(group.label)}">`
   )
 
+  // The author's subgraph styles (classDef or `style`) over the theme's
+  const style = group.inlineStyle
+  const fill = escapeAttr(style?.fill ?? 'var(--_group-fill)')
+  const stroke = escapeAttr(style?.stroke ?? 'var(--_node-stroke)')
+  const strokeWidth = escapeAttr(style?.['stroke-width'] ?? String(STROKE_WIDTHS.outerBox))
+  const dash = style?.['stroke-dasharray'] ? ` stroke-dasharray="${escapeAttr(style['stroke-dasharray'])}"` : ''
+  const radius = escapeAttr(style?.rx ?? '0')
+  const headerFill = style?.fill ? `color-mix(in srgb, ${escapeAttr(style.fill)} 88%, var(--_text))` : 'var(--_group-hdr)'
+
   // Outer rectangle
   parts.push(
     `  <rect x="${group.x}" y="${group.y}" width="${group.width}" height="${group.height}" ` +
-    `rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.outerBox}" />`
+    `rx="${radius}" ry="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
   )
 
-  // Header band
-  parts.push(
-    `  <rect x="${group.x}" y="${group.y}" width="${group.width}" height="${headerHeight}" ` +
-    `rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.outerBox}" />`
-  )
-
-  // Header label (supports multi-line via <br> tags)
-  parts.push(
-    '  ' + renderMultilineText(
-      group.label,
-      group.x + 12,
-      group.y + headerHeight / 2,
-      FONT_SIZES.groupHeader,
-      `font-size="${FONT_SIZES.groupHeader}" font-weight="${FONT_WEIGHTS.groupHeader}" fill="var(--_text-sec)"`
+  // Header band and title, for a subgraph that has a title
+  if (group.label.trim()) {
+    parts.push(
+      `  <rect x="${group.x}" y="${group.y}" width="${group.width}" height="${headerHeight}" ` +
+      `rx="${radius}" ry="${radius}" fill="${headerFill}" stroke="${stroke}" stroke-width="${strokeWidth}"${dash} />`
     )
-  )
+    parts.push(
+      '  ' + renderMultilineText(
+        group.label,
+        group.x + 12,
+        group.y + headerHeight / 2,
+        FONT_SIZES.groupHeader,
+        `font-size="${FONT_SIZES.groupHeader}" font-weight="${FONT_WEIGHTS.groupHeader}" fill="${escapeAttr(style?.color ?? 'var(--_text-sec)')}"`
+      )
+    )
+  }
 
   // Render nested groups recursively (inside this group)
   for (const child of group.children) {
@@ -198,7 +234,6 @@ function renderGroup(group: PositionedGroup, font: string): string {
 function renderEdge(edge: PositionedEdge): string {
   if (edge.points.length < 2) return ''
 
-  const pathData = pointsToPolylinePath(edge.points)
   const dashArray = edge.style === 'dotted' ? ' stroke-dasharray="4 4"' : ''
   const baseStrokeWidth = edge.style === 'thick' ? STROKE_WIDTHS.connector * 2 : STROKE_WIDTHS.connector
   const strokeColor = escapeAttr(edge.inlineStyle?.stroke ?? 'var(--_line)')
@@ -208,8 +243,8 @@ function renderEdge(edge: PositionedEdge): string {
   // Use color-specific markers when edge has a custom stroke from linkStyle
   const suffix = edge.inlineStyle?.stroke ? `-${markerSuffix(edge.inlineStyle.stroke)}` : ''
   let markers = ''
-  if (edge.hasArrowEnd) markers += ` marker-end="url(#arrowhead${suffix})"`
-  if (edge.hasArrowStart) markers += ` marker-start="url(#arrowhead-start${suffix})"`
+  if (edge.hasArrowEnd) markers += ` marker-end="url(#${edge.arrowEndKind ? `${edge.arrowEndKind}-end` : 'arrowhead'}${suffix})"`
+  if (edge.hasArrowStart) markers += ` marker-start="url(#${edge.arrowStartKind ? `${edge.arrowStartKind}-start` : 'arrowhead-start'}${suffix})"`
 
   // Semantic data attributes for edge identification and inspection:
   // - class="edge": CSS targeting and type identification
@@ -229,10 +264,44 @@ function renderEdge(edge: PositionedEdge): string {
     dataAttrs.push(`data-label="${escapeAttr(edge.label)}"`)
   }
 
+  if (edge.curved) {
+    return (
+      `<path ${dataAttrs.join(' ')} d="${basisPath(edge.points)}" fill="none" stroke="${strokeColor}" ` +
+      `stroke-width="${strokeWidth}" stroke-linecap="round"${dashArray}${markers} />`
+    )
+  }
   return (
-    `<polyline ${dataAttrs.join(' ')} points="${pathData}" fill="none" stroke="${strokeColor}" ` +
+    `<polyline ${dataAttrs.join(' ')} points="${pointsToPolylinePath(edge.points)}" fill="none" stroke="${strokeColor}" ` +
     `stroke-width="${strokeWidth}"${dashArray}${markers} />`
   )
+}
+
+/**
+ * A path through the points as a uniform cubic B-spline that starts and ends
+ * on the end points, as d3's curveBasis draws Mermaid's edges.
+ */
+function basisPath(points: Point[]): string {
+  const r = (value: number) => Math.round(value * 100) / 100
+  if (points.length < 3) return `M ${points.map(p => `${r(p.x)} ${r(p.y)}`).join(' L ')}`
+  const parts: string[] = []
+  let x0 = points[0]!.x, y0 = points[0]!.y, x1 = x0, y1 = y0
+  const bezier = (x: number, y: number) => {
+    parts.push(`C ${r((2 * x0 + x1) / 3)} ${r((2 * y0 + y1) / 3)} ${r((x0 + 2 * x1) / 3)} ${r((y0 + 2 * y1) / 3)} ${r((x0 + 4 * x1 + x) / 6)} ${r((y0 + 4 * y1 + y) / 6)}`)
+  }
+  parts.push(`M ${r(x0)} ${r(y0)}`)
+  for (let i = 1; i < points.length; i++) {
+    const { x, y } = points[i]!
+    if (i === 1) {
+      parts.push(`L ${r((5 * x0 + x) / 6)} ${r((5 * y0 + y) / 6)}`)
+    } else {
+      bezier(x, y)
+    }
+    x0 = x1; x1 = x; y0 = y1; y1 = y
+    if (i === 1) { x0 = points[0]!.x; y0 = points[0]!.y }
+  }
+  bezier(x1, y1)
+  parts.push(`L ${r(x1)} ${r(y1)}`)
+  return parts.join(' ')
 }
 
 /** Convert points to SVG polyline points attribute: "x1,y1 x2,y2 ..." */
@@ -344,7 +413,15 @@ function renderNodeShape(node: PositionedNode): string {
   // CSS variable handles theming automatically via color-mix() derivation.
   const fill = escapeAttr(inlineStyle?.fill ?? 'var(--_node-fill)')
   const stroke = escapeAttr(inlineStyle?.stroke ?? 'var(--_node-stroke)')
-  const sw = escapeAttr(inlineStyle?.['stroke-width'] ?? String(STROKE_WIDTHS.innerBox))
+  const dash = inlineStyle?.['stroke-dasharray'] ? `" stroke-dasharray="${escapeAttr(inlineStyle['stroke-dasharray'])}` : ''
+  const sw = escapeAttr(inlineStyle?.['stroke-width'] ?? String(STROKE_WIDTHS.innerBox)) + dash
+
+  // An author's corner radius (classDef rx/ry) on a box shape
+  if ((shape === 'rectangle' || shape === 'rounded') && inlineStyle?.rx) {
+    const rx = escapeAttr(inlineStyle.rx)
+    const ry = escapeAttr(inlineStyle.ry ?? inlineStyle.rx)
+    return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`
+  }
 
   switch (shape) {
     case 'diamond':
@@ -373,6 +450,12 @@ function renderNodeShape(node: PositionedNode): string {
       return renderStateStart(x, y, width, height)
     case 'state-end':
       return renderStateEnd(x, y, width, height)
+    case 'lean-right':
+      return renderLean(x, y, width, height, fill, stroke, sw, true)
+    case 'lean-left':
+      return renderLean(x, y, width, height, fill, stroke, sw, false)
+    case 'document':
+      return renderDocument(x, y, width, height, fill, stroke, sw)
     case 'rectangle':
     default:
       return renderRect(x, y, width, height, fill, stroke, sw)
@@ -539,6 +622,25 @@ function renderTrapezoidAlt(x: number, y: number, w: number, h: number, fill: st
   return `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`
 }
 
+/** Parallelogram [/text/] or [\\text\\]: top and bottom offset against each other */
+function renderLean(x: number, y: number, w: number, h: number, fill: string, stroke: string, sw: string, right: boolean): string {
+  const inset = w * 0.15
+  const points = right
+    ? [`${x + inset},${y}`, `${x + w},${y}`, `${x + w - inset},${y + h}`, `${x},${y + h}`]
+    : [`${x},${y}`, `${x + w - inset},${y}`, `${x + w},${y + h}`, `${x + inset},${y + h}`]
+  return `<polygon points="${points.join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`
+}
+
+/** Document: a rectangle whose bottom edge is a single wave */
+function renderDocument(x: number, y: number, w: number, h: number, fill: string, stroke: string, sw: string): string {
+  const wave = Math.min(10, h * 0.2)
+  const base = y + h - wave / 2
+  const d = `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${base} ` +
+    `C ${x + w * 0.75} ${base - wave} ${x + w * 0.5} ${base - wave} ${x + w * 0.5} ${base} ` +
+    `C ${x + w * 0.5} ${base + wave} ${x + w * 0.25} ${base + wave} ${x} ${base} Z`
+  return `<path d="${d}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`
+}
+
 // --- Batch 3: State diagram pseudostates ---
 
 /** State start: small filled circle using primary text color */
@@ -577,13 +679,14 @@ function renderNodeLabel(node: PositionedNode, font: string): string {
 
   // Resolve text color — inline styles can override the CSS variable default
   const textColor = escapeAttr(node.inlineStyle?.color ?? 'var(--_text)')
+  const fontSize = Number(node.inlineStyle?.['font-size']?.match(/^(\d+(?:\.\d+)?)(?:px)?$/)?.[1] ?? FONT_SIZES.nodeLabel)
 
   return renderMultilineText(
     node.label,
     cx,
     cy,
-    FONT_SIZES.nodeLabel,
-    `text-anchor="middle" font-size="${FONT_SIZES.nodeLabel}" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="${textColor}"`
+    fontSize,
+    `text-anchor="middle" font-size="${fontSize}" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="${textColor}"`
   )
 }
 

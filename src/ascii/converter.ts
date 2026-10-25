@@ -55,7 +55,8 @@ export function convertToAsciiGraph(parsed: MermaidGraph, config: AsciiConfig): 
   for (const mEdge of parsed.edges) {
     const from = nodeMap.get(mEdge.source)
     const to = nodeMap.get(mEdge.target)
-    if (!from || !to) continue
+    // An invisible link (`~~~`) only places its nodes; there is nothing to draw.
+    if (!from || !to || mEdge.style === 'invisible') continue
 
     edges.push({
       from,

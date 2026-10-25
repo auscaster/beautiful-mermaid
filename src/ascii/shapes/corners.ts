@@ -107,6 +107,22 @@ export const SHAPE_CORNERS: Record<AsciiNodeShape, ShapeCorners> = {
     ascii: { tl: '+', tr: '+', bl: '\\', br: '/' },
   },
 
+  // Parallelograms - the slant shows at opposite corners
+  'lean-right': {
+    unicode: { tl: '/', tr: '┐', bl: '└', br: '/' },
+    ascii: { tl: '/', tr: '+', bl: '+', br: '/' },
+  },
+  'lean-left': {
+    unicode: { tl: '┌', tr: '\\', bl: '\\', br: '┘' },
+    ascii: { tl: '+', tr: '\\', bl: '\\', br: '+' },
+  },
+
+  // Document - a box with a wavy bottom edge
+  document: {
+    unicode: { tl: '┌', tr: '┐', bl: '~', br: '~' },
+    ascii: { tl: '+', tr: '+', bl: '~', br: '~' },
+  },
+
   // State diagram pseudostates (special handling, not corner-based)
   'state-start': {
     unicode: { tl: '●', tr: '●', bl: '●', br: '●' },

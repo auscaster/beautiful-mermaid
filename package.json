@@ -50,6 +50,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "dagre-d3-es": "7.0.14",
     "elkjs": "^0.11.0",
     "entities": "^7.0.1"
   },
