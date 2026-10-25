@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'bun:test'
 import { renderMermaidDiagram } from '../index.ts'
-import { layoutMermaidFlowchart } from '../mermaid/flowchart.ts'
+import { layoutMermaidGraph } from '../mermaid/graph.ts'
 import type { MermaidLayoutData, MermaidLayoutNode } from '../mermaid/types.ts'
 import type { PositionedGroup } from '../types.ts'
 
@@ -23,7 +23,7 @@ describe('Mermaid flowcharts', () => {
       nodes: [group('Clients', 'Client Layer'), group('API', 'API Server'), node('FE', 'Frontend', { parentId: 'Clients' }), node('DE', 'Desktop', { parentId: 'Clients' }), node('AUTH', 'Auth Guards', { parentId: 'API' }), node('MOD', 'Modules', { parentId: 'API' }), node('PLUG', 'Plugin System', { parentId: 'API' })],
       edges: [edge('Clients', 'API')],
     }
-    const graph = layoutMermaidFlowchart(data, options)
+    const graph = layoutMermaidGraph(data, 'flowchart', options)
     const at = (id: string) => graph.nodes.find((n) => n.id === id)!
     // Taken out of a top-to-bottom diagram, each layer is laid out left to right, so its unlinked nodes stack, in order.
     expect(at('FE').y).toBeLessThan(at('DE').y)
@@ -45,7 +45,7 @@ describe('Mermaid flowcharts', () => {
       nodes: [group('Outer', 'Outer'), group('Inner', 'Inner', { parentId: 'Outer' }), group('Bare', ' '), node('A', 'A', { parentId: 'Inner' }), node('B', 'B', { parentId: 'Outer' }), node('C', 'C', { parentId: 'Bare' })],
       edges: [edge('A', 'B'), edge('B', 'C')],
     }
-    const graph = layoutMermaidFlowchart(data, options)
+    const graph = layoutMermaidGraph(data, 'flowchart', options)
     for (const g of flatten(graph.groups)) {
       const contents = [...graph.nodes.filter((n) => n.x >= g.x && n.x + n.width <= g.x + g.width && n.y >= g.y && n.y + n.height <= g.y + g.height), ...flatten(g.children)]
       const room = Math.min(...contents.map((item) => item.y)) - g.y
@@ -88,7 +88,7 @@ describe('Mermaid flowcharts', () => {
       ],
       edges: [edge('A', 'B', { label: 'reads', labelType: 'text', style: ['stroke:#09f', 'stroke-width:2px', 'fill:none'] })],
     }
-    const graph = layoutMermaidFlowchart(data, options)
+    const graph = layoutMermaidGraph(data, 'flowchart', options)
     const [a, b] = graph.nodes
     expect(a!.label).toBe('<b>Node Level</b>\nContribution: 65%')
     expect(a!.inlineStyle).toEqual({ fill: '#ffeb3b', stroke: '#f00', color: '#2c3e50', 'font-size': '14px' })
@@ -98,7 +98,7 @@ describe('Mermaid flowcharts', () => {
   })
 
   it('frames the drawing with the same margin on every side', () => {
-    const graph = layoutMermaidFlowchart({ nodes: [group('G', 'Group'), node('A', 'A', { parentId: 'G' }), node('B', 'Wide label here')], edges: [edge('A', 'B', { label: 'to' })] }, options)
+    const graph = layoutMermaidGraph({ nodes: [group('G', 'Group'), node('A', 'A', { parentId: 'G' }), node('B', 'Wide label here')], edges: [edge('A', 'B', { label: 'to' })] }, 'flowchart', options)
     const boxes = [...graph.nodes, ...flatten(graph.groups)]
     expect(Math.min(...boxes.map((b) => b.x))).toBeCloseTo(16, 5)
     expect(Math.min(...boxes.map((b) => b.y))).toBeCloseTo(16, 5)

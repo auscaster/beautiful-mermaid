@@ -4,6 +4,7 @@ import { svgOpenTag, buildStyleBlock } from '../theme.ts'
 import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, estimateTextWidth, TEXT_BASELINE_SHIFT } from '../styles.ts'
 import { CLS } from './layout.ts'
 import { renderMultilineText, escapeXml as escapeXmlUtil } from '../multiline-utils.ts'
+import { basisPath, renderGroup, renderNote } from '../renderer.ts'
 
 // ============================================================================
 // Class diagram SVG renderer
@@ -48,14 +49,27 @@ export function renderClassSvg(
   parts.push(relationshipMarkerDefs())
   parts.push('</defs>')
 
+  // 0. Namespaces (behind everything they hold)
+  for (const group of diagram.groups ?? []) {
+    parts.push(renderGroup(group, font))
+  }
+
   // 1. Relationship lines (rendered behind boxes)
   for (const rel of diagram.relationships) {
     parts.push(renderRelationship(rel))
   }
 
-  // 2. Class boxes
+  // 2. Class boxes, then notes
   for (const cls of diagram.classes) {
     parts.push(renderClassBox(cls))
+  }
+  for (const note of diagram.notes ?? []) {
+    parts.push(
+      `<g class="note" data-id="${escapeAttr(note.id)}">\n  ${renderNote(note.x, note.y, note.width, note.height)}\n  ` +
+      renderMultilineText(note.label, note.x + note.width / 2, note.y + note.height / 2, FONT_SIZES.nodeLabel,
+        `text-anchor="middle" font-size="${FONT_SIZES.nodeLabel}" font-weight="${FONT_WEIGHTS.edgeLabel}" fill="var(--_text-sec)"`) +
+      `\n</g>`
+    )
   }
 
   // 3. Relationship labels and cardinality
@@ -210,7 +224,7 @@ function renderMember(member: ClassMember, x: number, y: number): string {
   const spans: string[] = []
 
   if (member.visibility) {
-    spans.push(`<tspan fill="var(--_text-faint)">${escapeXml(member.visibility)} </tspan>`)
+    spans.push(`<tspan fill="var(--_text-faint)">${escapeXml(member.visibility)}</tspan>`)
   }
 
   // Add parentheses for methods to distinguish from attributes, including parameters if present
@@ -242,8 +256,7 @@ function renderMember(member: ClassMember, x: number, y: number): string {
 function renderRelationship(rel: PositionedClassRelationship): string {
   if (rel.points.length < 2) return ''
 
-  const pathData = rel.points.map(p => `${p.x},${p.y}`).join(' ')
-  const isDashed = rel.type === 'dependency' || rel.type === 'realization'
+  const isDashed = rel.dashed ?? (rel.type === 'dependency' || rel.type === 'realization')
   const dashArray = isDashed ? ' stroke-dasharray="6 4"' : ''
 
   // Determine markers based on relationship type and which end has the marker
@@ -273,8 +286,14 @@ function renderRelationship(rel: PositionedClassRelationship): string {
     dataAttrs.push(`data-to-cardinality="${escapeAttr(rel.toCardinality)}"`)
   }
 
+  if (rel.curved) {
+    return (
+      `<path ${dataAttrs.join(' ')} d="${basisPath(rel.points)}" fill="none" stroke="var(--_line)" ` +
+      `stroke-width="${STROKE_WIDTHS.connector}"${dashArray}${markers} />`
+    )
+  }
   return (
-    `<polyline ${dataAttrs.join(' ')} points="${pathData}" fill="none" stroke="var(--_line)" ` +
+    `<polyline ${dataAttrs.join(' ')} points="${rel.points.map(p => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="var(--_line)" ` +
     `stroke-width="${STROKE_WIDTHS.connector}"${dashArray}${markers} />`
   )
 }

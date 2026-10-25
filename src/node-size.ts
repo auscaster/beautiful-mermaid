@@ -18,16 +18,27 @@ export function groupHeaderHeight(label: string): number {
 /** Room between a subgraph's header band and the first thing inside it. */
 export const GROUP_HEADER_GAP = 12
 
+/** Space a node's description takes below its label: the divider's gap above and below it. */
+export const DESCRIPTION_GAP = 8
+
 /**
  * The width and height a node needs to hold its label in its shape.
- * `fontSize` is the label's size where an author's style sets one.
+ * `fontSize` is the label's size where an author's style sets one;
+ * `description` is lines shown under a divider below the label.
  */
-export function estimateNodeSize(label: string, shape: string, fontSize: number = FONT_SIZES.nodeLabel): { width: number; height: number } {
-  if (shape === 'state-start' || shape === 'state-end') return { width: 28, height: 28 }
+export function estimateNodeSize(label: string, shape: string, fontSize: number = FONT_SIZES.nodeLabel, description?: string): { width: number; height: number } {
+  // A start state's dot and an end state's ring, at Mermaid's 14px.
+  if (shape === 'state-start' || shape === 'state-end') return { width: 18, height: 18 }
+  if (shape === 'state-choice') return { width: 28, height: 28 }
 
   const metrics = measureMultilineText(label, fontSize, FONT_WEIGHTS.nodeLabel)
   let width = metrics.width + NODE_PADDING.horizontal * 2
   let height = metrics.height + NODE_PADDING.vertical * 2
+  if (description) {
+    const below = measureMultilineText(description, fontSize, FONT_WEIGHTS.nodeLabel - 100)
+    width = Math.max(width, below.width + NODE_PADDING.horizontal * 2)
+    height += below.height + DESCRIPTION_GAP * 2
+  }
 
   if (shape === 'diamond') {
     const side = Math.max(width, height) + NODE_PADDING.diamondExtra

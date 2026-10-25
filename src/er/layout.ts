@@ -7,14 +7,14 @@
  */
 
 import type { ElkNode, ElkExtendedEdge } from 'elkjs'
-import type { ErDiagram, ErEntity, PositionedErDiagram, PositionedErEntity, PositionedErRelationship } from './types.ts'
+import type { ErColumns, ErDiagram, ErEntity, PositionedErDiagram, PositionedErEntity, PositionedErRelationship } from './types.ts'
 import type { RenderOptions, Point } from '../types.ts'
 import { estimateTextWidth, estimateMonoTextWidth, FONT_SIZES, FONT_WEIGHTS } from '../styles.ts'
 import { measureMultilineText } from '../text-metrics.ts'
 import { elkLayoutSync } from '../elk-instance.ts'
 
 /** Layout constants for ER diagrams */
-const ER = {
+export const ER = {
   padding: 40,
   boxPadX: 14,
   headerHeight: 34,
@@ -28,6 +28,35 @@ const ER = {
 
 type EntitySizeMap = Map<string, { width: number; height: number }>
 
+/** Space between the columns of an entity's attribute table. */
+export const ER_COLUMN_GAP = 12
+
+/** Font of the key badges (PK, FK, UK). */
+export const ER_KEY_FONT = { size: 9, weight: 600 } as const
+
+/**
+ * An entity's size and its attribute table's columns: type, name, keys and
+ * comment, each as wide as its widest cell, as Mermaid tabulates them. An
+ * entity with no attributes is its header alone.
+ */
+export function entityTable(entity: ErEntity): { width: number; height: number; columns: ErColumns } {
+  const columns: ErColumns = { type: 0, name: 0, keys: 0, comment: 0 }
+  for (const attr of entity.attributes) {
+    columns.type = Math.max(columns.type, estimateMonoTextWidth(attr.type, ER.attrFontSize))
+    columns.name = Math.max(columns.name, estimateMonoTextWidth(attr.name, ER.attrFontSize))
+    if (attr.keys.length) columns.keys = Math.max(columns.keys, estimateTextWidth(attr.keys.join(', '), ER_KEY_FONT.size, ER_KEY_FONT.weight) + 8)
+    if (attr.comment) columns.comment = Math.max(columns.comment, estimateTextWidth(attr.comment, ER.attrFontSize, ER.attrFontWeight))
+  }
+  const used = [columns.type, columns.name, columns.keys, columns.comment].filter((width) => width > 0)
+  const rowWidth = used.reduce((sum, width) => sum + width, 0) + Math.max(0, used.length - 1) * ER_COLUMN_GAP
+  const headerTextW = estimateTextWidth(entity.label, FONT_SIZES.nodeLabel, 700)
+  return {
+    width: Math.max(ER.minWidth, headerTextW + ER.boxPadX * 2, rowWidth + ER.boxPadX * 2),
+    height: ER.headerHeight + entity.attributes.length * ER.rowHeight,
+    columns,
+  }
+}
+
 /** Build ELK graph and size map from an ER diagram. */
 function buildErElkGraph(
   diagram: ErDiagram,
@@ -36,15 +65,7 @@ function buildErElkGraph(
   const entitySizes: EntitySizeMap = new Map()
 
   for (const entity of diagram.entities) {
-    const headerTextW = estimateTextWidth(entity.label, FONT_SIZES.nodeLabel, FONT_WEIGHTS.nodeLabel)
-    let maxAttrW = 0
-    for (const attr of entity.attributes) {
-      const attrText = `${attr.type}  ${attr.name}${attr.keys.length > 0 ? '  ' + attr.keys.join(',') : ''}`
-      const w = estimateMonoTextWidth(attrText, ER.attrFontSize)
-      if (w > maxAttrW) maxAttrW = w
-    }
-    const width = Math.max(ER.minWidth, headerTextW + ER.boxPadX * 2, maxAttrW + ER.boxPadX * 2)
-    const height = ER.headerHeight + Math.max(entity.attributes.length, 1) * ER.rowHeight
+    const { width, height } = entityTable(entity)
     entitySizes.set(entity.id, { width, height })
   }
 
@@ -104,6 +125,7 @@ function extractErLayout(
         height: child.height ?? entitySizes.get(entity.id)!.height,
         headerHeight: ER.headerHeight,
         rowHeight: ER.rowHeight,
+        columns: entityTable(entity).columns,
       })
     }
   }

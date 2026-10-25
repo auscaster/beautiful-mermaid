@@ -1,5 +1,7 @@
 // ============================================================================
-// Flowcharts as Mermaid's parser reads them, laid out as Mermaid lays them out.
+// Flowcharts and state diagrams as Mermaid's parser reads them (`getData()`),
+// laid out as Mermaid lays them out. The two share Mermaid's layout; they
+// differ in the shapes their nodes take and how their edges end.
 // ============================================================================
 
 import type { ArrowKind, Direction, EdgeStyle, NodeShape, Point, PositionedEdge, PositionedGraph, PositionedGroup, PositionedNode } from '../types.ts'
@@ -10,6 +12,7 @@ import { layoutDagre, type DagreNodeInput } from '../dagre/layout.ts'
 import { intersectShape } from '../dagre/intersect.ts'
 import type { MermaidLayoutData } from './types.ts'
 import { mermaidLabel, mermaidStyles, pixels } from './labels.ts'
+import { Ink, moveGroups, movePoint } from './frame.ts'
 
 /** Mermaid's shape names (flowchart and `@{ shape }`) as the renderer's. */
 const SHAPES: Record<string, NodeShape> = {
@@ -29,41 +32,58 @@ const SHAPES: Record<string, NodeShape> = {
   doc: 'document', document: 'document',
 }
 
+/** Mermaid's state shapes as the renderer's; a state is a rounded box. */
+const STATE_SHAPES: Record<string, NodeShape> = {
+  stateStart: 'state-start', stateEnd: 'state-end', rect: 'rounded', rectWithTitle: 'rounded',
+  choice: 'state-choice', fork: 'state-bar', join: 'state-bar', note: 'note',
+}
+
+/** State shapes that are a mark: Mermaid names them (`root_start`, `fork1`) but shows no label. */
+const STATE_MARKS: ReadonlySet<string> = new Set(['stateStart', 'stateEnd', 'choice', 'fork', 'join'])
+
 const ARROWS: Record<string, ArrowKind> = { arrow_point: 'arrow', arrow_circle: 'circle', arrow_cross: 'cross', arrow_barb: 'arrow' }
 
 const EDGE_LABEL_PADDING = { x: 8, y: 6 }
 
-export interface FlowchartLayoutOptions {
+export interface GraphLayoutOptions {
   padding: number
   nodeSpacing: number
   rankSpacing: number
 }
 
-export function layoutMermaidFlowchart(data: MermaidLayoutData, options: FlowchartLayoutOptions): PositionedGraph {
+export type GroupInput = { label: string; inlineStyle?: Record<string, string>; parentId?: string; variant?: PositionedGroup['variant'] }
+
+export function layoutMermaidGraph(data: MermaidLayoutData, kind: 'flowchart' | 'state', options: GraphLayoutOptions): PositionedGraph {
   const direction = directionOf(data.direction)
   const nodes = new Map<string, PositionedNode>()
-  const groups = new Map<string, { label: string; inlineStyle?: Record<string, string>; parentId?: string }>()
+  const groups = new Map<string, GroupInput>()
   const dagreNodes: DagreNodeInput[] = []
 
   for (const node of data.nodes) {
-    const label = mermaidLabel(node.label, node.labelType)
     const inlineStyle = mermaidStyles(node.cssCompiledStyles, node.cssStyles)
     if (node.isGroup) {
-      groups.set(node.id, { label, inlineStyle, parentId: node.parentId })
+      // A state's concurrent regions and the box holding a note beside its state are untitled.
+      const variant = kind === 'state' ? (node.shape === 'divider' ? 'region' : node.shape === 'noteGroup' ? 'hidden' : undefined) : undefined
+      const label = variant ? '' : mermaidLabel(node.label, node.labelType)
+      groups.set(node.id, { label, inlineStyle, parentId: node.parentId, ...(variant ? { variant } : {}) })
       const header = groupHeaderHeight(label)
       dagreNodes.push({ id: node.id, parentId: node.parentId, isGroup: true, dir: node.dir ? directionOf(node.dir) : undefined, ...(header ? { titleHeight: header + GROUP_HEADER_GAP } : {}), width: 0, height: 0 })
       continue
     }
-    const shape = SHAPES[node.shape ?? ''] ?? 'rectangle'
-    const size = estimateNodeSize(label, shape, pixels(inlineStyle?.['font-size']))
-    nodes.set(node.id, { id: node.id, label, shape, x: 0, y: 0, width: size.width, height: size.height, inlineStyle })
+    const shape = (kind === 'state' ? STATE_SHAPES[node.shape ?? ''] ?? 'rounded' : SHAPES[node.shape ?? '']) ?? 'rectangle'
+    const label = kind === 'state' && STATE_MARKS.has(node.shape ?? '') ? '' : mermaidLabel(node.label, node.labelType)
+    const description = node.description?.length ? node.description.map((line) => mermaidLabel(line, node.labelType)).join('\n') : undefined
+    const size = shape === 'state-bar' ? (direction === 'LR' || direction === 'RL' ? { width: 8, height: 70 } : { width: 70, height: 8 }) : estimateNodeSize(label, shape, pixels(inlineStyle?.['font-size']), description)
+    nodes.set(node.id, { id: node.id, label, shape, x: 0, y: 0, width: size.width, height: size.height, inlineStyle, ...(description ? { description } : {}) })
     dagreNodes.push({ id: node.id, parentId: node.parentId, isGroup: false, width: size.width, height: size.height })
   }
 
   const edgeInputs = data.edges.map((edge) => {
     const label = mermaidLabel(edge.label, edge.labelType)
     const metrics = label ? measureMultilineText(label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel) : undefined
-    return { edge, label, metrics }
+    // A note hangs from its state on a dotted line with no arrowhead.
+    const note = kind === 'state' && /\bnote-edge\b/.test(edge.classes ?? '')
+    return { edge, label, metrics, note }
   })
 
   const shapeOf = (id: string): NodeShape => nodes.get(id)?.shape ?? 'rectangle'
@@ -96,11 +116,11 @@ export function layoutMermaidFlowchart(data: MermaidLayoutData, options: Flowcha
   for (const laidEdge of laid.edges) {
     const input = byId.get(laidEdge.id)
     if (!input) continue
-    const { edge, label } = input
-    const style = edgeStyle(edge.pattern ?? edge.thickness)
+    const { edge, label, note } = input
+    const style = note ? 'dotted' : edgeStyle(edge.pattern ?? edge.thickness)
     if (style === 'invisible') continue
-    const arrowStart = ARROWS[edge.arrowTypeStart ?? '']
-    const arrowEnd = ARROWS[edge.arrowTypeEnd ?? '']
+    const arrowStart = note ? undefined : ARROWS[edge.arrowTypeStart ?? '']
+    const arrowEnd = note ? undefined : ARROWS[edge.arrowTypeEnd ?? '']
     positionedEdges.push({
       source: laidEdge.source,
       target: laidEdge.target,
@@ -111,7 +131,8 @@ export function layoutMermaidFlowchart(data: MermaidLayoutData, options: Flowcha
       ...(arrowStart && arrowStart !== 'arrow' ? { arrowStartKind: arrowStart } : {}),
       ...(arrowEnd && arrowEnd !== 'arrow' ? { arrowEndKind: arrowEnd } : {}),
       points: laidEdge.points,
-      inlineStyle: mermaidStyles(edge.style?.filter((declaration) => !/^\s*fill\s*:/.test(declaration))),
+      // linkStyle's declarations; a state's edges carry only Mermaid's own `fill:none`.
+      inlineStyle: Array.isArray(edge.style) ? mermaidStyles(edge.style.filter((declaration) => !/^\s*fill\s*:/.test(declaration))) : undefined,
       curved: true,
     })
   }
@@ -133,17 +154,14 @@ function edgeStyle(pattern: string | undefined): EdgeStyle {
 }
 
 /** Subgraphs as nested groups, each at least as wide as its title. */
-function groupTree(
-  groups: Map<string, { label: string; inlineStyle?: Record<string, string>; parentId?: string }>,
-  boxes: Map<string, { x: number; y: number; width: number; height: number }>,
-): PositionedGroup[] {
+export function groupTree(groups: Map<string, GroupInput>, boxes: Map<string, { x: number; y: number; width: number; height: number }>): PositionedGroup[] {
   const made = new Map<string, PositionedGroup>()
   for (const [id, group] of groups) {
     const box = boxes.get(id)
     if (!box) continue
     const title = measureMultilineText(group.label, FONT_SIZES.groupHeader, FONT_WEIGHTS.groupHeader).width + 24
     const width = Math.max(box.width, title)
-    made.set(id, { id, label: group.label, x: box.x - width / 2, y: box.y - box.height / 2, width, height: box.height, children: [], ...(group.inlineStyle ? { inlineStyle: group.inlineStyle } : {}) })
+    made.set(id, { id, label: group.label, x: box.x - width / 2, y: box.y - box.height / 2, width, height: box.height, children: [], ...(group.inlineStyle ? { inlineStyle: group.inlineStyle } : {}), ...(group.variant ? { variant: group.variant } : {}) })
   }
   const roots: PositionedGroup[] = []
   for (const [id, group] of groups) {
@@ -158,27 +176,21 @@ function groupTree(
 
 /** The drawing moved so its ink sits the same padding from every side of the canvas. */
 function framed(graph: PositionedGraph, padding: number): PositionedGraph {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-  const take = (x: number, y: number, w = 0, h = 0) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + w); y1 = Math.max(y1, y + h) }
-  for (const node of graph.nodes) take(node.x, node.y, node.width, node.height)
-  const walk = (groups: PositionedGroup[]) => { for (const group of groups) { take(group.x, group.y, group.width, group.height); walk(group.children) } }
-  walk(graph.groups)
+  const ink = new Ink().groups(graph.groups)
+  for (const node of graph.nodes) ink.box(node)
   for (const edge of graph.edges) {
-    for (const point of edge.points) take(point.x, point.y)
+    for (const point of edge.points) ink.point(point)
     if (edge.label && edge.labelPosition) {
       const metrics = measureMultilineText(edge.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
-      take(edge.labelPosition.x - metrics.width / 2 - EDGE_LABEL_PADDING.x, edge.labelPosition.y - metrics.height / 2 - EDGE_LABEL_PADDING.y, metrics.width + EDGE_LABEL_PADDING.x * 2, metrics.height + EDGE_LABEL_PADDING.y * 2)
+      ink.box({ x: edge.labelPosition.x - metrics.width / 2 - EDGE_LABEL_PADDING.x, y: edge.labelPosition.y - metrics.height / 2 - EDGE_LABEL_PADDING.y, width: metrics.width + EDGE_LABEL_PADDING.x * 2, height: metrics.height + EDGE_LABEL_PADDING.y * 2 })
     }
   }
-  if (!Number.isFinite(x0)) return { ...graph, width: padding * 2, height: padding * 2 }
-  const dx = padding - x0, dy = padding - y0
-  const move = (point: Point): Point => ({ x: point.x + dx, y: point.y + dy })
-  const moveGroups = (groups: PositionedGroup[]): PositionedGroup[] => groups.map((group) => ({ ...group, x: group.x + dx, y: group.y + dy, children: moveGroups(group.children) }))
+  const { dx, dy, width, height } = ink.frame(padding)
   return {
-    width: x1 - x0 + padding * 2,
-    height: y1 - y0 + padding * 2,
+    width,
+    height,
     nodes: graph.nodes.map((node) => ({ ...node, x: node.x + dx, y: node.y + dy })),
-    edges: graph.edges.map((edge) => ({ ...edge, points: edge.points.map(move), ...(edge.labelPosition ? { labelPosition: move(edge.labelPosition) } : {}) })),
-    groups: moveGroups(graph.groups),
+    edges: graph.edges.map((edge) => ({ ...edge, points: edge.points.map((point) => movePoint(point, dx, dy)), ...(edge.labelPosition ? { labelPosition: movePoint(edge.labelPosition, dx, dy) } : {}) })),
+    groups: moveGroups(graph.groups, dx, dy),
   }
 }

@@ -30,7 +30,29 @@ export const CLS = {
   layerSpacing: 60,
 } as const
 
-type ClassSizeMap = Map<string, { width: number; height: number; headerHeight: number; attrHeight: number; methodHeight: number }>
+export type ClassBoxSize = { width: number; height: number; headerHeight: number; attrHeight: number; methodHeight: number }
+type ClassSizeMap = Map<string, ClassBoxSize>
+
+/** A class box's size and the height of each of its compartments. */
+export function classBoxSize(cls: ClassNode): ClassBoxSize {
+  const headerHeight = cls.annotation
+    ? CLS.headerBaseHeight + CLS.annotationHeight
+    : CLS.headerBaseHeight
+
+  const attrHeight = cls.attributes.length > 0
+    ? cls.attributes.length * CLS.memberRowHeight + CLS.sectionPadY
+    : CLS.emptySectionHeight
+
+  const methodHeight = cls.methods.length > 0
+    ? cls.methods.length * CLS.memberRowHeight + CLS.sectionPadY
+    : CLS.emptySectionHeight
+
+  const headerTextW = estimateTextWidth(cls.label, FONT_SIZES.nodeLabel, FONT_WEIGHTS.nodeLabel)
+  const maxAttrW = maxMemberWidth(cls.attributes)
+  const maxMethodW = maxMemberWidth(cls.methods)
+  const width = Math.max(CLS.minWidth, headerTextW + CLS.boxPadX * 2, maxAttrW + CLS.boxPadX * 2, maxMethodW + CLS.boxPadX * 2)
+  return { width, height: headerHeight + attrHeight + methodHeight, headerHeight, attrHeight, methodHeight }
+}
 
 /** Build ELK graph and size map from a class diagram. */
 function buildClassElkGraph(
@@ -38,28 +60,7 @@ function buildClassElkGraph(
   _options: RenderOptions
 ): { elkGraph: ElkNode; classSizes: ClassSizeMap } {
   const classSizes: ClassSizeMap = new Map()
-
-  for (const cls of diagram.classes) {
-    const headerHeight = cls.annotation
-      ? CLS.headerBaseHeight + CLS.annotationHeight
-      : CLS.headerBaseHeight
-
-    const attrHeight = cls.attributes.length > 0
-      ? cls.attributes.length * CLS.memberRowHeight + CLS.sectionPadY
-      : CLS.emptySectionHeight
-
-    const methodHeight = cls.methods.length > 0
-      ? cls.methods.length * CLS.memberRowHeight + CLS.sectionPadY
-      : CLS.emptySectionHeight
-
-    const headerTextW = estimateTextWidth(cls.label, FONT_SIZES.nodeLabel, FONT_WEIGHTS.nodeLabel)
-    const maxAttrW = maxMemberWidth(cls.attributes)
-    const maxMethodW = maxMemberWidth(cls.methods)
-    const width = Math.max(CLS.minWidth, headerTextW + CLS.boxPadX * 2, maxAttrW + CLS.boxPadX * 2, maxMethodW + CLS.boxPadX * 2)
-    const height = headerHeight + attrHeight + methodHeight
-
-    classSizes.set(cls.id, { width, height, headerHeight, attrHeight, methodHeight })
-  }
+  for (const cls of diagram.classes) classSizes.set(cls.id, classBoxSize(cls))
 
   const elkGraph: ElkNode = {
     id: 'root',
@@ -204,7 +205,7 @@ function maxMemberWidth(members: ClassMember[]): number {
 
 /** Convert a class member to its display string */
 export function memberToString(m: ClassMember): string {
-  const vis = m.visibility ? `${m.visibility} ` : ''
+  const vis = m.visibility ?? ''
   const name = m.isMethod ? `${m.name}(${m.params || ''})` : m.name
   const type = m.type ? `: ${m.type}` : ''
   return `${vis}${name}${type}`

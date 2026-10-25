@@ -14,6 +14,8 @@
  * Note: '1' is included because in proportional fonts (like Inter), it's
  * significantly narrower than other digits which use tabular/uniform width.
  */
+import { INTER_ADVANCES } from './fonts/inter-advances.ts'
+
 const NARROW_CHARS = new Set(['i', 'l', 't', 'f', 'j', 'I', '1', '!', '|', '.', ',', ':', ';', "'"])
 
 /**
@@ -173,22 +175,31 @@ export function getCharWidth(char: string): number {
  * @returns Estimated width in pixels
  */
 export function measureTextWidth(text: string, fontSize: number, fontWeight: number): number {
-  // Base ratio calibrated for Inter font family
+  // Base ratio calibrated for Inter font family, for characters Inter's table lacks
   // Heavier weights are slightly wider
   // Added +0.02 buffer to prevent edge truncation of characters like 's' at line ends
   const baseRatio = fontWeight >= 600 ? 0.60 : fontWeight >= 500 ? 0.57 : 0.54
+  const advances = INTER_ADVANCES[interWeight(fontWeight)]!
 
   let totalWidth = 0
 
   // Iterate over code points (handles surrogate pairs for emoji/CJK)
   for (const char of text) {
-    totalWidth += getCharWidth(char)
+    const code = char.codePointAt(0)!
+    // Inter's own advance where it has the character, in em; an estimate otherwise.
+    const advance = advances[code]
+    totalWidth += advance !== undefined ? advance : getCharWidth(char) * baseRatio
   }
 
   // Add minimum padding to prevent truncation at text boundaries
   // Increased from 0.1 to 0.15 for better label separation and collision prevention
   const minPadding = fontSize * 0.15
-  return totalWidth * fontSize * baseRatio + minPadding
+  return totalWidth * fontSize + minPadding
+}
+
+/** The weight of Inter's table nearest a font weight. */
+function interWeight(fontWeight: number): number {
+  return fontWeight >= 650 ? 700 : fontWeight >= 550 ? 600 : fontWeight >= 450 ? 500 : 400
 }
 
 // ============================================================================

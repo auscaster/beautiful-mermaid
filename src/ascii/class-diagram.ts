@@ -126,6 +126,9 @@ function getMarkerShape(
         // Default to right (or when direction not specified)
         return useAscii ? '>' : '▶'
       }
+    case 'link':
+      // A plain line ends without a marker
+      return ''
   }
 }
 

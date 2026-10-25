@@ -123,6 +123,20 @@ export const SHAPE_CORNERS: Record<AsciiNodeShape, ShapeCorners> = {
     ascii: { tl: '+', tr: '+', bl: '~', br: '~' },
   },
 
+  // State diagram marks and notes
+  'state-bar': {
+    unicode: { tl: '━', tr: '━', bl: '━', br: '━' },
+    ascii: { tl: '=', tr: '=', bl: '=', br: '=' },
+  },
+  'state-choice': {
+    unicode: { tl: '◇', tr: '◇', bl: '◇', br: '◇' },
+    ascii: { tl: '<', tr: '>', bl: '<', br: '>' },
+  },
+  note: {
+    unicode: { tl: '┌', tr: '╮', bl: '└', br: '┘' },
+    ascii: { tl: '+', tr: '.', bl: '+', br: '+' },
+  },
+
   // State diagram pseudostates (special handling, not corner-based)
   'state-start': {
     unicode: { tl: '●', tr: '●', bl: '●', br: '●' },

@@ -46,6 +46,10 @@ export type NodeShape =
   | 'lean-right'     // [/text/]  — parallelogram leaning right
   | 'lean-left'      // [\text\]  — parallelogram leaning left
   | 'document'       // @{ shape: doc } — wavy bottom edge
+  // State diagram shapes Mermaid's parser reports
+  | 'state-bar'      // <<fork>> / <<join>> — a short filled bar across the flow
+  | 'state-choice'   // <<choice>> — a small unlabeled diamond
+  | 'note'           // note right of X — a box with a folded corner
 
 export interface MermaidEdge {
   source: string
@@ -94,6 +98,8 @@ export interface PositionedNode {
   height: number
   /** Inline styles resolved from classDef + explicit `style` statements — override theme defaults */
   inlineStyle?: Record<string, string>
+  /** Lines shown under a divider beneath the label, as a state's further descriptions are */
+  description?: string
 }
 
 export interface PositionedEdge {
@@ -131,6 +137,11 @@ export interface PositionedGroup {
   children: PositionedGroup[]
   /** The author's styles for the subgraph (classDef or `style`), over the theme's */
   inlineStyle?: Record<string, string>
+  /**
+   * `region`: one of a composite state's concurrent regions, a dashed box with no header.
+   * `hidden`: a box that only keeps its contents together (a note beside its state), not drawn.
+   */
+  variant?: 'region' | 'hidden'
 }
 
 // ============================================================================

@@ -1,3 +1,5 @@
+import type { PositionedGroup, PositionedNode } from '../types.ts'
+
 // ============================================================================
 // Class diagram types
 //
@@ -51,6 +53,7 @@ export type RelationshipType =
   | 'association'   // A --> B    (solid line, open arrow)
   | 'dependency'    // A ..> B    (dashed line, open arrow)
   | 'realization'   // A ..|> B   (dashed line, hollow triangle)
+  | 'link'          // A -- B, A .. B  (a line with no marker)
 
 export interface ClassRelationship {
   from: string
@@ -85,6 +88,10 @@ export interface PositionedClassDiagram {
   height: number
   classes: PositionedClassNode[]
   relationships: PositionedClassRelationship[]
+  /** Namespaces, drawn behind the classes they hold */
+  groups?: PositionedGroup[]
+  /** Notes (`note for X "..."`), each joined to its class by a dashed relationship */
+  notes?: PositionedNode[]
 }
 
 export interface PositionedClassNode {
@@ -118,4 +125,8 @@ export interface PositionedClassRelationship {
   points: Array<{ x: number; y: number }>
   /** Dagre-computed label center position (avoids overlaps between nearby edges) */
   labelPosition?: { x: number; y: number }
+  /** Draw the path as a curve through its points (Mermaid's basis curve) rather than straight segments */
+  curved?: boolean
+  /** Dashed whatever the type says: a dashed link (`..`) or a note's connector */
+  dashed?: boolean
 }

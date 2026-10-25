@@ -3,6 +3,7 @@
  */
 import { describe, it, expect } from 'bun:test'
 import { getCharWidth, measureTextWidth } from '../text-metrics'
+import { INTER_ADVANCES } from '../fonts/inter-advances'
 
 // ============================================================================
 // Character width classification
@@ -146,10 +147,15 @@ describe('measureTextWidth', () => {
     expect(measureTextWidth('', fontSize, fontWeight)).toBeCloseTo(minPadding, 1)
   })
 
-  it('handles lowercase text with narrow letters', () => {
-    // "hello" = h(1.0) + e(1.0) + l(0.4) + l(0.4) + o(1.0) = 3.8
-    const width = measureTextWidth('hello', fontSize, fontWeight)
-    expect(width).toBeCloseTo(3.8 * fontSize * baseRatio + minPadding, 1)
+  /** A Latin string's width as Inter sets it: the sum of its characters' advances at the weight. */
+  const inter = (text: string, weight = fontWeight) => [...text].reduce((sum, char) => sum + INTER_ADVANCES[weight]![char.codePointAt(0)!]!, 0) * fontSize + minPadding
+
+  it('measures Latin text by Inter\'s own advances', () => {
+    expect(measureTextWidth('hello', fontSize, fontWeight)).toBeCloseTo(inter('hello'), 5)
+    expect(measureTextWidth('Will', fontSize, fontWeight)).toBeCloseTo(inter('Will'), 5)
+    expect(measureTextWidth('a b', fontSize, fontWeight)).toBeCloseTo(inter('a b'), 5)
+    // A weight between Inter's tables reads the nearest one.
+    expect(measureTextWidth('hello', fontSize, 700)).toBeCloseTo(inter('hello', 700), 5)
   })
 
   it('narrow text is narrower than uniform estimate', () => {
@@ -164,18 +170,6 @@ describe('measureTextWidth', () => {
     const wide = measureTextWidth('MAMMOTH', fontSize, fontWeight)
     const uniform = 'MAMMOTH'.length * fontSize * baseRatio
     expect(wide).toBeGreaterThan(uniform)
-  })
-
-  it('handles mixed Latin text', () => {
-    // "Will" = W(1.5) + i(0.4) + l(0.4) + l(0.4) = 2.7
-    const width = measureTextWidth('Will', fontSize, fontWeight)
-    expect(width).toBeCloseTo(2.7 * fontSize * baseRatio + minPadding, 1)
-  })
-
-  it('handles spaces correctly', () => {
-    // "a b" = a(1.0) + space(0.3) + b(1.0) = 2.3
-    const width = measureTextWidth('a b', fontSize, fontWeight)
-    expect(width).toBeCloseTo(2.3 * fontSize * baseRatio + minPadding, 1)
   })
 
   it('handles decomposed accents (base + combining mark)', () => {
@@ -194,10 +188,9 @@ describe('measureTextWidth', () => {
     expect(width).toBeCloseTo(4.0 * fontSize * baseRatio + minPadding, 1)
   })
 
-  it('handles mixed Latin and CJK', () => {
-    // "Hello中国" = H(1.2) + e(1.0) + l(0.4) + l(0.4) + o(1.0) + 中(2.0) + 国(2.0) = 8.0
+  it('handles mixed Latin and CJK: Inter\'s advances for the Latin, the estimate for the CJK it lacks', () => {
     const width = measureTextWidth('Hello中国', fontSize, fontWeight)
-    expect(width).toBeCloseTo(8.0 * fontSize * baseRatio + minPadding, 1)
+    expect(width).toBeCloseTo(inter('Hello') + 4.0 * fontSize * baseRatio, 1)
   })
 
   it('heavier weights produce wider estimates', () => {

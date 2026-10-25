@@ -77,6 +77,15 @@ export interface PositionedErEntity {
   headerHeight: number
   /** Height per attribute row */
   rowHeight: number
+  /** Width of each column of the attribute table: type, name, keys, comment (0 where no row has one) */
+  columns?: ErColumns
+}
+
+export interface ErColumns {
+  type: number
+  name: number
+  keys: number
+  comment: number
 }
 
 export interface PositionedErRelationship {
@@ -88,4 +97,8 @@ export interface PositionedErRelationship {
   identifying: boolean
   /** Path points from entity1 to entity2 */
   points: Array<{ x: number; y: number }>
+  /** Layout-computed label centre, where the layout made room for the label */
+  labelPosition?: { x: number; y: number }
+  /** Draw the path as a curve through its points (Mermaid's basis curve) rather than straight segments */
+  curved?: boolean
 }

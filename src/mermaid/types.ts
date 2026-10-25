@@ -34,6 +34,8 @@ export interface MermaidLayoutNode {
   /** Styles from `style` statements, which win over the classes'. */
   cssStyles?: string[]
   link?: string
+  /** A state's further descriptions, after the one its label shows. */
+  description?: string[]
 }
 
 export interface MermaidLayoutEdge {
@@ -48,6 +50,8 @@ export interface MermaidLayoutEdge {
   arrowTypeStart?: string
   arrowTypeEnd?: string
   minlen?: number
-  /** Styles from `linkStyle`. */
-  style?: string[]
+  /** Styles from `linkStyle` (a state diagram's edges carry a plain string). */
+  style?: string[] | string
+  /** Mermaid's classes for the edge: a state's note edge is `note-edge`. */
+  classes?: string
 }

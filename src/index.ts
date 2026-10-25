@@ -44,7 +44,9 @@ import { renderClassSvg } from './class/renderer.ts'
 import { parseErDiagram } from './er/parser.ts'
 import { layoutErDiagramSync } from './er/layout.ts'
 import { renderErSvg } from './er/renderer.ts'
-import { layoutMermaidFlowchart } from './mermaid/flowchart.ts'
+import { layoutMermaidGraph } from './mermaid/graph.ts'
+import { layoutMermaidClass } from './mermaid/class.ts'
+import { layoutMermaidEr } from './mermaid/er.ts'
 import type { MermaidLayoutData, ParsedMermaidDiagram } from './mermaid/types.ts'
 import { parseXYChart } from './xychart/parser.ts'
 import { layoutXYChart } from './xychart/layout.ts'
@@ -187,8 +189,23 @@ export function renderMermaidDiagram(
       if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
       const data = db.getData()
       // A flowchart's direction stays on its database; Mermaid's renderer adds it to the layout data.
-      const positioned = layoutMermaidFlowchart({ ...data, direction: data.direction ?? db.getDirection?.() }, spacing)
+      const positioned = layoutMermaidGraph({ ...data, direction: data.direction ?? db.getDirection?.() }, 'flowchart', spacing)
       return renderSvg(positioned, colors, font, transparent, embedFonts)
+    }
+    case 'stateDiagram':
+    case 'state': {
+      if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
+      return renderSvg(layoutMermaidGraph(db.getData(), 'state', spacing), colors, font, transparent, embedFonts)
+    }
+    case 'classDiagram':
+    case 'class': {
+      if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
+      return renderClassSvg(layoutMermaidClass(db.getData(), spacing), colors, font, transparent, embedFonts)
+    }
+    case 'er': {
+      if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
+      // Mermaid spaces entities wider than other diagrams' nodes (140 and 80 at its 16px text).
+      return renderErSvg(layoutMermaidEr(db.getData(), { padding: spacing.padding, nodeSpacing: options.nodeSpacing ?? 112, rankSpacing: options.layerSpacing ?? 64 }), colors, font, transparent, embedFonts)
     }
     default:
       throw new Error(`Diagram type "${parsed.type}" is not supported`)

@@ -4,7 +4,7 @@ import { svgOpenTag, buildStyleBlock } from './theme.ts'
 import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, ARROW_HEAD, estimateTextWidth, TEXT_BASELINE_SHIFT } from './styles.ts'
 import { measureMultilineText } from './text-metrics.ts'
 import { renderMultilineText, renderMultilineTextWithBackground, escapeXml } from './multiline-utils.ts'
-import { groupHeaderHeight } from './node-size.ts'
+import { DESCRIPTION_GAP, groupHeaderHeight } from './node-size.ts'
 
 // ============================================================================
 // SVG renderer — converts a PositionedGraph into an SVG string.
@@ -174,7 +174,17 @@ function markerSuffix(color: string): string {
 // Group rendering (subgraph backgrounds)
 // ============================================================================
 
-function renderGroup(group: PositionedGroup, font: string): string {
+export function renderGroup(group: PositionedGroup, font: string): string {
+  // A box that only keeps its contents together draws only them.
+  if (group.variant === 'hidden') return group.children.map(child => renderGroup(child, font)).join('\n')
+  if (group.variant === 'region') {
+    return [
+      `<g class="subgraph region" data-id="${escapeAttr(group.id)}">`,
+      `  <rect x="${group.x}" y="${group.y}" width="${group.width}" height="${group.height}" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.innerBox}" stroke-dasharray="4 4" />`,
+      ...group.children.map(child => renderGroup(child, font)),
+      '</g>',
+    ].join('\n')
+  }
   const headerHeight = groupHeaderHeight(group.label)
   const parts: string[] = []
 
@@ -280,7 +290,7 @@ function renderEdge(edge: PositionedEdge): string {
  * A path through the points as a uniform cubic B-spline that starts and ends
  * on the end points, as d3's curveBasis draws Mermaid's edges.
  */
-function basisPath(points: Point[]): string {
+export function basisPath(points: Point[]): string {
   const r = (value: number) => Math.round(value * 100) / 100
   if (points.length < 3) return `M ${points.map(p => `${r(p.x)} ${r(p.y)}`).join(' L ')}`
   const parts: string[] = []
@@ -456,6 +466,12 @@ function renderNodeShape(node: PositionedNode): string {
       return renderLean(x, y, width, height, fill, stroke, sw, false)
     case 'document':
       return renderDocument(x, y, width, height, fill, stroke, sw)
+    case 'state-bar':
+      return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="2" ry="2" fill="${inlineStyle?.fill ? fill : 'var(--_text)'}" stroke="none" />`
+    case 'state-choice':
+      return renderDiamond(x, y, width, height, fill, stroke, sw)
+    case 'note':
+      return renderNote(x, y, width, height, inlineStyle?.fill ? fill : NOTE_FILL, inlineStyle?.stroke ? stroke : NOTE_STROKE, sw)
     case 'rectangle':
     default:
       return renderRect(x, y, width, height, fill, stroke, sw)
@@ -631,6 +647,21 @@ function renderLean(x: number, y: number, w: number, h: number, fill: string, st
   return `<polygon points="${points.join(' ')}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" />`
 }
 
+/** A note's warm tint, mixed into the page's own background so it reads in light and dark themes. */
+const NOTE_FILL = 'color-mix(in srgb, #f2c94c 18%, var(--bg))'
+const NOTE_STROKE = 'color-mix(in srgb, #c9a227 55%, var(--bg))'
+
+/** Note: a box with its top-right corner folded */
+export function renderNote(x: number, y: number, w: number, h: number, fill: string = NOTE_FILL, stroke: string = NOTE_STROKE, sw: string = String(STROKE_WIDTHS.innerBox)): string {
+  const fold = Math.min(10, h / 3)
+  const outline = `${x},${y} ${x + w - fold},${y} ${x + w},${y + fold} ${x + w},${y + h} ${x},${y + h}`
+  const corner = `${x + w - fold},${y} ${x + w - fold},${y + fold} ${x + w},${y + fold}`
+  return (
+    `<polygon points="${outline}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />` +
+    `\n<polyline points="${corner}" fill="none" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" />`
+  )
+}
+
 /** Document: a rectangle whose bottom edge is a single wave */
 function renderDocument(x: number, y: number, w: number, h: number, fill: string, stroke: string, sw: string): string {
   const wave = Math.min(10, h * 0.2)
@@ -668,11 +699,15 @@ function renderStateEnd(x: number, y: number, w: number, h: number): string {
 // Node label rendering
 // ============================================================================
 
+/** Shapes that are a mark, not a box: they show no label (a fork's bar, a choice's diamond). */
+const UNLABELED: ReadonlySet<string> = new Set(['state-bar', 'state-choice'])
+
 function renderNodeLabel(node: PositionedNode, font: string): string {
   // State pseudostates have no label
   if (node.shape === 'state-start' || node.shape === 'state-end') {
     if (!node.label) return ''
   }
+  if (UNLABELED.has(node.shape)) return ''
 
   const cx = node.x + node.width / 2
   const cy = node.y + node.height / 2
@@ -680,14 +715,21 @@ function renderNodeLabel(node: PositionedNode, font: string): string {
   // Resolve text color — inline styles can override the CSS variable default
   const textColor = escapeAttr(node.inlineStyle?.color ?? 'var(--_text)')
   const fontSize = Number(node.inlineStyle?.['font-size']?.match(/^(\d+(?:\.\d+)?)(?:px)?$/)?.[1] ?? FONT_SIZES.nodeLabel)
+  const attrs = (weight: number) => `text-anchor="middle" font-size="${fontSize}" font-weight="${weight}" fill="${textColor}"`
 
-  return renderMultilineText(
-    node.label,
-    cx,
-    cy,
-    fontSize,
-    `text-anchor="middle" font-size="${fontSize}" font-weight="${FONT_WEIGHTS.nodeLabel}" fill="${textColor}"`
-  )
+  if (!node.description) return renderMultilineText(node.label, cx, cy, fontSize, attrs(FONT_WEIGHTS.nodeLabel))
+
+  // A label over a divider over the description, as a state with several descriptions is drawn.
+  const title = measureMultilineText(node.label, fontSize, FONT_WEIGHTS.nodeLabel)
+  const body = measureMultilineText(node.description, fontSize, FONT_WEIGHTS.nodeLabel - 100)
+  const top = cy - (title.height + body.height + DESCRIPTION_GAP * 2) / 2
+  const divider = top + title.height + DESCRIPTION_GAP
+  const stroke = escapeAttr(node.inlineStyle?.stroke ?? 'var(--_node-stroke)')
+  return [
+    renderMultilineText(node.label, cx, top + title.height / 2, fontSize, attrs(FONT_WEIGHTS.nodeLabel + 100)),
+    `<line x1="${node.x}" y1="${divider}" x2="${node.x + node.width}" y2="${divider}" stroke="${stroke}" stroke-width="${STROKE_WIDTHS.innerBox}" />`,
+    renderMultilineText(node.description, cx, divider + DESCRIPTION_GAP + body.height / 2, fontSize, attrs(FONT_WEIGHTS.nodeLabel - 100)),
+  ].join('\n')
 }
 
 // ============================================================================

@@ -1,4 +1,6 @@
-import type { PositionedErDiagram, PositionedErEntity, PositionedErRelationship, ErAttribute, Cardinality } from './types.ts'
+import type { PositionedErDiagram, PositionedErEntity, PositionedErRelationship, ErAttribute, ErColumns, Cardinality } from './types.ts'
+import { ER, ER_COLUMN_GAP, ER_KEY_FONT, entityTable } from './layout.ts'
+import { basisPath } from '../renderer.ts'
 import type { DiagramColors } from '../theme.ts'
 import { svgOpenTag, buildStyleBlock } from '../theme.ts'
 import { FONT_SIZES, FONT_WEIGHTS, STROKE_WIDTHS, estimateTextWidth, TEXT_BASELINE_SHIFT } from '../styles.ts'
@@ -111,26 +113,19 @@ function renderEntityBox(entity: PositionedErEntity): string {
     )
   )
 
-  // Divider
+  // Attribute rows, under a divider, in the table's columns
   const attrTop = y + headerHeight
-  parts.push(
-    `  <line x1="${x}" y1="${attrTop}" x2="${x + width}" y2="${attrTop}" ` +
-    `stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.innerBox}" />`
-  )
-
-  // Attribute rows
+  const columns = entity.columns ?? entityTable(entity).columns
+  if (attributes.length > 0) {
+    parts.push(
+      `  <line x1="${x}" y1="${attrTop}" x2="${x + width}" y2="${attrTop}" ` +
+      `stroke="var(--_node-stroke)" stroke-width="${STROKE_WIDTHS.innerBox}" />`
+    )
+  }
   for (let i = 0; i < attributes.length; i++) {
     const attr = attributes[i]!
     const rowY = attrTop + i * rowHeight + rowHeight / 2
-    parts.push('  ' + renderAttribute(attr, x, rowY, width).replace(/\n/g, '\n  '))
-  }
-
-  // Empty row placeholder when no attributes
-  if (attributes.length === 0) {
-    parts.push(
-      `  <text x="${x + width / 2}" y="${attrTop + rowHeight / 2}" text-anchor="middle" dy="${TEXT_BASELINE_SHIFT}" ` +
-      `font-size="${ER_FONT.attrSize}" fill="var(--_text-faint)" font-style="italic">(no attributes)</text>`
-    )
+    parts.push('  ' + renderAttribute(attr, x, rowY, columns).replace(/\n/g, '\n  '))
   }
 
   parts.push('</g>')
@@ -138,60 +133,42 @@ function renderEntityBox(entity: PositionedErEntity): string {
 }
 
 /**
- * Render a single attribute row with monospace syntax highlighting.
- * Layout: [PK badge]  type  name  (left-aligned in mono, name right-aligned)
- * Uses <tspan> elements for per-part coloring, matching the class diagram style.
- *
- * Key badge uses var(--_key-badge) for background tint.
- * Comments are shown as tooltips via SVG <title> element.
+ * One attribute row across the table's columns: type, name, key badges and
+ * comment, as Mermaid tabulates them. Types and names are set in the mono
+ * face, keys as small badges, comments in the text face.
  */
-function renderAttribute(attr: ErAttribute, boxX: number, y: number, boxWidth: number): string {
+function renderAttribute(attr: ErAttribute, boxX: number, y: number, columns: ErColumns): string {
   const parts: string[] = []
+  let left = boxX + ER.boxPadX
+  const next = (width: number) => { const at = left; if (width > 0) left += width + ER_COLUMN_GAP; return at }
+  const typeX = next(columns.type)
+  const nameX = next(columns.name)
+  const keysX = next(columns.keys)
+  const commentX = next(columns.comment)
 
-  // Wrap in a group if there's a comment (for tooltip support)
-  const hasComment = attr.comment && attr.comment.length > 0
-  if (hasComment) {
-    // Replace <br> with newlines for tooltip display
-    const tooltipText = attr.comment!.replace(/<br\s*\/?>/gi, '\n')
-    parts.push(`<g><title>${escapeXml(tooltipText)}</title>`)
-  }
-
-  // Key badges on the left (keep proportional font — they're visual tags, not code)
-  let keyWidth = 0
-  if (attr.keys.length > 0) {
-    const keyText = attr.keys.join(',')
-    keyWidth = estimateTextWidth(keyText, ER_FONT.keySize, ER_FONT.keyWeight) + 8
-    parts.push(
-      `<rect x="${boxX + 6}" y="${y - 7}" width="${keyWidth}" height="14" rx="2" ry="2" ` +
-      `fill="var(--_key-badge)" />`
-    )
-    parts.push(
-      `<text x="${boxX + 6 + keyWidth / 2}" y="${y}" text-anchor="middle" dy="${TEXT_BASELINE_SHIFT}" ` +
-      `font-size="${ER_FONT.keySize}" font-weight="${ER_FONT.keyWeight}" fill="var(--_text-sec)">${attr.keys.join(',')}</text>`
-    )
-  }
-
-  // Type (left-aligned after keys, monospace with syntax highlighting)
-  const typeX = boxX + 8 + (keyWidth > 0 ? keyWidth + 6 : 0)
   parts.push(
     `<text x="${typeX}" y="${y}" class="mono" dy="${TEXT_BASELINE_SHIFT}" ` +
-    `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}">` +
-    `<tspan fill="var(--_text-muted)">${escapeXml(attr.type)}</tspan></text>`
+    `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}" fill="var(--_text-muted)">${escapeXml(attr.type)}</text>`
   )
-
-  // Name (right-aligned, monospace with syntax highlighting)
-  const nameX = boxX + boxWidth - 8
   parts.push(
-    `<text x="${nameX}" y="${y}" class="mono" text-anchor="end" dy="${TEXT_BASELINE_SHIFT}" ` +
-    `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}">` +
-    `<tspan fill="var(--_text-sec)">${escapeXml(attr.name)}</tspan></text>`
+    `<text x="${nameX}" y="${y}" class="mono" dy="${TEXT_BASELINE_SHIFT}" ` +
+    `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}" fill="var(--_text-sec)">${escapeXml(attr.name)}</text>`
   )
-
-  // Close the group if we opened one
-  if (hasComment) {
-    parts.push('</g>')
+  if (attr.keys.length > 0) {
+    const keyText = attr.keys.join(', ')
+    const keyWidth = estimateTextWidth(keyText, ER_KEY_FONT.size, ER_KEY_FONT.weight) + 8
+    parts.push(
+      `<rect x="${keysX}" y="${y - 7}" width="${keyWidth}" height="14" rx="2" ry="2" fill="var(--_key-badge)" />`,
+      `<text x="${keysX + keyWidth / 2}" y="${y}" text-anchor="middle" dy="${TEXT_BASELINE_SHIFT}" ` +
+      `font-size="${ER_KEY_FONT.size}" font-weight="${ER_KEY_FONT.weight}" fill="var(--_text-sec)">${escapeXml(keyText)}</text>`
+    )
   }
-
+  if (attr.comment) {
+    parts.push(
+      `<text x="${commentX}" y="${y}" dy="${TEXT_BASELINE_SHIFT}" ` +
+      `font-size="${ER_FONT.attrSize}" font-weight="${ER_FONT.attrWeight}" fill="var(--_text-faint)">${escapeXml(attr.comment)}</text>`
+    )
+  }
   return parts.join('\n')
 }
 
@@ -205,7 +182,6 @@ function renderAttribute(attr: ErAttribute, boxX: number, y: number, boxWidth: n
 function renderRelationshipLine(rel: PositionedErRelationship): string {
   if (rel.points.length < 2) return ''
 
-  const pathData = rel.points.map(p => `${p.x},${p.y}`).join(' ')
   const dashArray = !rel.identifying ? ' stroke-dasharray="6 4"' : ''
 
   // Semantic data attributes for relationship inspection
@@ -219,8 +195,9 @@ function renderRelationshipLine(rel: PositionedErRelationship): string {
     `data-identifying="${rel.identifying}"`,
   ]
 
+  const shape = rel.curved ? `<path d="${basisPath(rel.points)}"` : `<polyline points="${rel.points.map(p => `${p.x},${p.y}`).join(' ')}"`
   return (
-    `<polyline ${dataAttrs.join(' ')}${labelAttr} points="${pathData}" fill="none" stroke="var(--_line)" ` +
+    `${shape.replace(/^<(path|polyline) /, `<$1 ${dataAttrs.join(' ')}${labelAttr} `)} fill="none" stroke="var(--_line)" ` +
     `stroke-width="${STROKE_WIDTHS.connector}"${dashArray} />`
   )
 }
@@ -229,7 +206,7 @@ function renderRelationshipLine(rel: PositionedErRelationship): string {
 function renderRelationshipLabel(rel: PositionedErRelationship): string {
   if (!rel.label || rel.points.length < 2) return ''
 
-  const mid = midpoint(rel.points)
+  const mid = rel.labelPosition ?? midpoint(rel.points)
   const metrics = measureMultilineText(rel.label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
 
   // Background pill for readability
