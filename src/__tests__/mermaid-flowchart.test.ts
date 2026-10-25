@@ -8,6 +8,7 @@ import { renderMermaidDiagram } from '../index.ts'
 import { layoutMermaidGraph } from '../mermaid/graph.ts'
 import type { MermaidLayoutData, MermaidLayoutNode } from '../mermaid/types.ts'
 import type { PositionedGroup } from '../types.ts'
+import { measureTextWidth } from '../text-metrics.ts'
 
 const node = (id: string, label: string, extra: Partial<MermaidLayoutNode> = {}): MermaidLayoutNode => ({ id, label, labelType: 'text', shape: 'squareRect', ...extra })
 const group = (id: string, label: string, extra: Partial<MermaidLayoutNode> = {}): MermaidLayoutNode => ({ id, label, labelType: 'string', shape: 'rect', isGroup: true, ...extra })
@@ -123,5 +124,17 @@ describe('Mermaid flowcharts', () => {
     expect(ink('Deep')).toBe('#ffffff')
     expect(ink('Own')).toBe('#333')
     expect(ink('Plain')).toBe('var(--_text)')
+  })
+
+  it('wraps a label\'s long lines at spaces as Mermaid does, at 12.5em of its text', () => {
+    const long = 'SchedulerJobRunnerService Overlap prevention, retry logic with delay'
+    const data = { direction: 'LR', nodes: [node('a', long), node('b', 'B')], edges: [edge('a', 'b', { label: 'retries the job after an exponential backoff delay' })] } as unknown as MermaidLayoutData
+    const graph = layoutMermaidGraph(data, 'flowchart', options)
+    const a = graph.nodes.find((n) => n.id === 'a')!
+    expect(a.label.split('\n').length).toBeGreaterThan(1)
+    for (const line of a.label.split('\n')) if (line.includes(' ')) expect(measureTextWidth(line, 13, 500)).toBeLessThanOrEqual(12.5 * 13)
+    expect(graph.edges[0]!.label!.split('\n').length).toBeGreaterThan(1)
+    // A word longer than the width keeps a line of its own.
+    expect(a.label.split('\n')[0]).toBe('SchedulerJobRunnerService')
   })
 })

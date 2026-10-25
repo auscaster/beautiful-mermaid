@@ -1,5 +1,5 @@
 import type { MindmapNode, MindmapShape, PositionedMindmap, PositionedMindmapEdge, PositionedMindmapNode } from './types.ts'
-import { measureMultilineText, measureTextWidth } from '../text-metrics.ts'
+import { measureMultilineText, wrapText } from '../text-metrics.ts'
 
 // ============================================================================
 // Mindmap layout
@@ -28,20 +28,7 @@ export const MINDMAP_FONT = {
 
 /** A label's lines, wrapped as Mermaid wraps them past its width. */
 export function wrapLabel(label: string, font: { size: number; weight: number }): string {
-  return label.split('\n').map((line) => {
-    const words = line.split(/\s+/).filter(Boolean)
-    const lines: string[] = []
-    let current = ''
-    for (const word of words) {
-      const next = current ? `${current} ${word}` : word
-      if (current && measureTextWidth(next, font.size, font.weight) > MINDMAP.maxTextWidth) {
-        lines.push(current)
-        current = word
-      } else current = next
-    }
-    if (current) lines.push(current)
-    return lines.join('\n')
-  }).join('\n')
+  return wrapText(label, MINDMAP.maxTextWidth, font.size, font.weight)
 }
 
 /** A node's box for its shape around its label. */

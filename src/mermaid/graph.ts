@@ -6,7 +6,7 @@
 
 import type { ArrowKind, Direction, EdgeStyle, NodeShape, Point, PositionedEdge, PositionedGraph, PositionedGroup, PositionedNode } from '../types.ts'
 import { FONT_SIZES, FONT_WEIGHTS } from '../styles.ts'
-import { measureMultilineText } from '../text-metrics.ts'
+import { measureMultilineText, WRAP_EMS, wrapText } from '../text-metrics.ts'
 import { estimateNodeSize, GROUP_HEADER_GAP, groupHeaderHeight } from '../node-size.ts'
 import { layoutDagre, type DagreNodeInput } from '../dagre/layout.ts'
 import { intersectShape } from '../dagre/intersect.ts'
@@ -71,15 +71,18 @@ export function layoutMermaidGraph(data: MermaidLayoutData, kind: 'flowchart' | 
       continue
     }
     const shape = (kind === 'state' ? STATE_SHAPES[node.shape ?? ''] ?? 'rounded' : SHAPES[node.shape ?? '']) ?? 'rectangle'
-    const label = kind === 'state' && STATE_MARKS.has(node.shape ?? '') ? '' : mermaidLabel(node.label, node.labelType)
-    const description = node.description?.length ? node.description.map((line) => mermaidLabel(line, node.labelType)).join('\n') : undefined
+    // A label's lines wrap as Mermaid wraps them, at 12.5em of its own size.
+    const fontSize = pixels(inlineStyle?.['font-size']) ?? FONT_SIZES.nodeLabel
+    const wrap = (text: string, weight: number) => wrapText(text, WRAP_EMS * fontSize, fontSize, weight)
+    const label = kind === 'state' && STATE_MARKS.has(node.shape ?? '') ? '' : wrap(mermaidLabel(node.label, node.labelType), FONT_WEIGHTS.nodeLabel)
+    const description = node.description?.length ? wrap(node.description.map((line) => mermaidLabel(line, node.labelType)).join('\n'), FONT_WEIGHTS.nodeLabel - 100) : undefined
     const size = shape === 'state-bar' ? (direction === 'LR' || direction === 'RL' ? { width: 8, height: 70 } : { width: 70, height: 8 }) : estimateNodeSize(label, shape, pixels(inlineStyle?.['font-size']), description)
     nodes.set(node.id, { id: node.id, label, shape, x: 0, y: 0, width: size.width, height: size.height, inlineStyle, ...(description ? { description } : {}) })
     dagreNodes.push({ id: node.id, parentId: node.parentId, isGroup: false, width: size.width, height: size.height })
   }
 
   const edgeInputs = data.edges.map((edge) => {
-    const label = mermaidLabel(edge.label, edge.labelType)
+    const label = wrapText(mermaidLabel(edge.label, edge.labelType), WRAP_EMS * FONT_SIZES.edgeLabel, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel)
     const metrics = label ? measureMultilineText(label, FONT_SIZES.edgeLabel, FONT_WEIGHTS.edgeLabel) : undefined
     // A note hangs from its state on a dotted line with no arrowhead.
     const note = kind === 'state' && /\bnote-edge\b/.test(edge.classes ?? '')

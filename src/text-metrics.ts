@@ -209,6 +209,31 @@ function interWeight(fontWeight: number): number {
 /** Standard line height ratio for multi-line text (1.3 = 130% of font size) */
 export const LINE_HEIGHT_RATIO = 1.3
 
+/** Mermaid wraps a node's or an edge's label at 200px of its 16px text: 12.5em of the label's own size. */
+export const WRAP_EMS = 12.5
+
+/**
+ * A label with each of its lines wrapped at spaces to at most `maxWidth`, as
+ * Mermaid's HTML labels wrap; a word wider than that keeps a line of its own.
+ */
+export function wrapText(text: string, maxWidth: number, fontSize: number, fontWeight: number): string {
+  const width = (line: string) => measureTextWidth(line.replace(/<\/?(?:b|strong|i|em|u|s|del)\s*>/gi, ''), fontSize, fontWeight)
+  return text.split('\n').map((line) => {
+    if (width(line) <= maxWidth) return line
+    const lines: string[] = []
+    let current = ''
+    for (const word of line.split(/\s+/).filter(Boolean)) {
+      const next = current ? `${current} ${word}` : word
+      if (current && width(next) > maxWidth) {
+        lines.push(current)
+        current = word
+      } else current = next
+    }
+    if (current) lines.push(current)
+    return lines.join('\n')
+  }).join('\n')
+}
+
 /** Metrics for multi-line text measurement */
 export interface MultilineMetrics {
   /** Maximum line width in pixels */
