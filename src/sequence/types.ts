@@ -15,14 +15,51 @@ export interface SequenceDiagram {
   blocks: Block[]
   /** Notes attached to actors */
   notes: Note[]
+  /**
+   * Everything in the order it happens, as Mermaid's parser reports it: messages, notes,
+   * blocks opening, dividing and closing, and lifelines activating. Laid out from this when
+   * present; derived from the lists above otherwise.
+   */
+  timeline?: SequenceEvent[]
+  /** Number each message (`autonumber`) */
+  autonumber?: boolean
+  /** Boxes grouping participants (`box Label ... end`) */
+  boxes?: SequenceBox[]
+}
+
+export type SequenceEvent =
+  | {
+      kind: 'message'
+      message: Message
+      /** The number shown beside it, when messages are numbered here (autonumber) */
+      number?: number
+      /** This message creates its target, which appears where it arrives (`create participant`) */
+      creates?: boolean
+      /** This message is the last for one of its ends, which ends here (`destroy`) */
+      destroys?: 'from' | 'to'
+    }
+  | { kind: 'note'; note: Omit<Note, 'afterIndex'> }
+  | { kind: 'block-start'; type: Block['type']; label: string; fill?: string }
+  | { kind: 'block-divider'; label: string }
+  | { kind: 'block-end' }
+  | { kind: 'activate'; actorId: string }
+  | { kind: 'deactivate'; actorId: string }
+
+export interface SequenceBox {
+  label: string
+  actorIds: string[]
+  /** The author's colour for the box */
+  fill?: string
 }
 
 export interface Actor {
   id: string
   label: string
-  /** 'participant' renders as a box, 'actor' renders as a stick figure */
-  type: 'participant' | 'actor'
+  /** 'participant' renders as a box, 'actor' renders as a stick figure; the rest as Mermaid's symbols */
+  type: ActorType
 }
+
+export type ActorType = 'participant' | 'actor' | 'boundary' | 'control' | 'entity' | 'database' | 'collections' | 'queue'
 
 export interface Message {
   from: string
@@ -30,8 +67,10 @@ export interface Message {
   label: string
   /** Arrow style: solid line or dashed line */
   lineStyle: 'solid' | 'dashed'
-  /** Arrow head: filled (closed) or open */
-  arrowHead: 'filled' | 'open'
+  /** Arrow head: filled (`->>`), open (`-)`), none (`->`) or a cross (`-x`) */
+  arrowHead: 'filled' | 'open' | 'none' | 'cross'
+  /** Arrow heads at both ends (`<<->>`) */
+  bidirectional?: boolean
   /** Activate the target lifeline (+) */
   activate?: boolean
   /** Deactivate the source lifeline (-) */
@@ -75,12 +114,16 @@ export interface PositionedSequenceDiagram {
   activations: Activation[]
   blocks: PositionedBlock[]
   notes: PositionedNote[]
+  /** The actors again below the lifelines, as Mermaid repeats them (mirrorActors) */
+  footerActors?: PositionedActor[]
+  /** Boxes grouping participants, drawn behind them */
+  boxes?: Array<{ label: string; x: number; y: number; width: number; height: number; fill?: string }>
 }
 
 export interface PositionedActor {
   id: string
   label: string
-  type: 'participant' | 'actor'
+  type: ActorType
   /** Center x of the actor box */
   x: number
   /** Top y of the actor box */
@@ -102,7 +145,11 @@ export interface PositionedMessage {
   to: string
   label: string
   lineStyle: 'solid' | 'dashed'
-  arrowHead: 'filled' | 'open'
+  arrowHead: Message['arrowHead']
+  /** Arrow heads at both ends */
+  bidirectional?: boolean
+  /** The message's number, when the diagram numbers them (autonumber) */
+  number?: number
   /** Start point (from actor's lifeline) */
   x1: number
   /** End point (to actor's lifeline) */
@@ -125,6 +172,8 @@ export interface Activation {
 export interface PositionedBlock {
   type: Block['type']
   label: string
+  /** A `rect` block's colour */
+  fill?: string
   x: number
   y: number
   width: number

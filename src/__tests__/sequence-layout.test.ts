@@ -1,13 +1,14 @@
 /**
  * Layout tests for sequence diagrams — verify that block headers and dividers
- * get extra vertical space so they don't overlap with messages.
+ * get vertical room of their own so they don't overlap with messages.
  *
  * These tests call parseSequenceDiagram + layoutSequenceDiagram directly
  * to inspect Y coordinates, rather than checking SVG output.
  */
 import { describe, it, expect } from 'bun:test'
 import { parseSequenceDiagram } from '../sequence/parser.ts'
-import { layoutSequenceDiagram } from '../sequence/layout.ts'
+import { SEQ, blockTab, dividerLabel, layoutSequenceDiagram, messageLabelY } from '../sequence/layout.ts'
+import type { PositionedMessage } from '../sequence/types.ts'
 
 /** Helper: parse and layout a sequence diagram from source lines */
 function layout(source: string) {
@@ -18,67 +19,40 @@ function layout(source: string) {
   return layoutSequenceDiagram(parseSequenceDiagram(lines))
 }
 
+/** The top of a message's label: its lines sit `labelGap` above the arrow. */
+function labelTop(msg: PositionedMessage): number {
+  return 2 * messageLabelY(msg.y, msg.label) - (msg.y - SEQ.labelGap)
+}
+
 describe('sequence layout – block spacing', () => {
-  it('messages outside blocks are spaced at the base row height', () => {
+  it('messages outside blocks are a row gap apart, arrow to label', () => {
     const result = layout(`sequenceDiagram
       A->>B: First
       B->>A: Second
       A->>B: Third`)
 
-    // Three messages with no blocks — uniform spacing
     expect(result.messages).toHaveLength(3)
     const gap1 = result.messages[1]!.y - result.messages[0]!.y
     const gap2 = result.messages[2]!.y - result.messages[1]!.y
-    // Both gaps should be identical (base messageRowHeight, 40px)
-    expect(gap1).toBe(gap2)
-    expect(gap1).toBe(40) // SEQ.messageRowHeight
+    expect(gap1).toBeCloseTo(gap2)
+    expect(labelTop(result.messages[1]!) - result.messages[0]!.y).toBeCloseTo(SEQ.rowGap)
   })
 
-  it('first message in a loop block gets extra header space', () => {
-    const result = layout(`sequenceDiagram
-      A->>B: Before loop
-      loop Every 5s
-        A->>B: Inside loop
-      end`)
+  for (const type of ['loop', 'alt', 'opt', 'par', 'critical']) {
+    it(`the first message in a ${type} block starts under its label tab`, () => {
+      const result = layout(`sequenceDiagram
+        A->>B: Before
+        ${type} Every 5s
+          A->>B: Inside
+        end`)
 
-    expect(result.messages).toHaveLength(2)
-    const gap = result.messages[1]!.y - result.messages[0]!.y
-    // Should be baseRowHeight + blockHeaderExtra = 40 + 28 = 68
-    expect(gap).toBe(40 + 28)
-  })
+      const block = result.blocks[0]!
+      expect(block.y - result.messages[0]!.y).toBeCloseTo(SEQ.rowGap)
+      expect(labelTop(result.messages[1]!) - (block.y + blockTab(type, 'Every 5s').height)).toBeCloseTo(SEQ.blockHeaderGap)
+    })
+  }
 
-  it('first message in an alt block gets extra header space', () => {
-    const result = layout(`sequenceDiagram
-      A->>B: Login
-      alt Success
-        B->>A: 200
-      end`)
-
-    expect(result.messages).toHaveLength(2)
-    const gap = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap).toBe(40 + 28)
-  })
-
-  it('messages after else dividers get extra divider space', () => {
-    const result = layout(`sequenceDiagram
-      A->>B: Login
-      alt Valid
-        B->>A: 200 OK
-      else Invalid
-        B->>A: 401
-      end`)
-
-    expect(result.messages).toHaveLength(3)
-    // msg[0] → msg[1]: base + blockHeaderExtra (first message in alt block)
-    const gap01 = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap01).toBe(40 + 28)
-
-    // msg[1] → msg[2]: base + dividerExtra (message after "else Invalid")
-    const gap12 = result.messages[2]!.y - result.messages[1]!.y
-    expect(gap12).toBe(40 + 24)
-  })
-
-  it('multiple else dividers each get extra space', () => {
+  it('each else divider sits midway under the message above it, its label clear of the one below', () => {
     const result = layout(`sequenceDiagram
       C->>S: Login
       alt Valid credentials
@@ -90,23 +64,15 @@ describe('sequence layout – block spacing', () => {
       end`)
 
     expect(result.messages).toHaveLength(4)
-
-    // msg[0] → msg[1]: base + blockHeaderExtra
-    const gap01 = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap01).toBe(40 + 28)
-
-    // msg[1] → msg[2]: base + dividerExtra (else Invalid)
-    const gap12 = result.messages[2]!.y - result.messages[1]!.y
-    expect(gap12).toBe(40 + 24)
-
-    // msg[2] → msg[3]: base + dividerExtra (else Account locked)
-    const gap23 = result.messages[3]!.y - result.messages[2]!.y
-    expect(gap23).toBe(40 + 24)
+    const [first, second] = result.blocks[0]!.dividers
+    for (const [divider, above, below] of [[first!, result.messages[1]!, result.messages[2]!], [second!, result.messages[2]!, result.messages[3]!]] as const) {
+      expect(divider.y - above.y).toBeCloseTo(SEQ.rowGap / 2)
+      const labelBottom = divider.y + SEQ.dividerGap + dividerLabel(divider.label).height
+      expect(labelTop(below) - labelBottom).toBeCloseTo(SEQ.dividerGap)
+    }
   })
 
-  it('par block with and dividers gets correct spacing', () => {
-    // Messages: Validate (idx 0), Get user (idx 1), Get orders (idx 2)
-    // Block: startIndex=1, dividers=[{index:2}]
+  it('par block and dividers space like alt and else', () => {
     const result = layout(`sequenceDiagram
       G->>A: Validate
       par Fetch user
@@ -115,42 +81,13 @@ describe('sequence layout – block spacing', () => {
         G->>O: Get orders
       end`)
 
-    expect(result.messages).toHaveLength(3)
-
-    // msg[0] → msg[1]: base + blockHeaderExtra (first in par block)
-    const gap01 = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap01).toBe(40 + 28)
-
-    // msg[1] → msg[2]: base + dividerExtra (and Fetch orders)
-    const gap12 = result.messages[2]!.y - result.messages[1]!.y
-    expect(gap12).toBe(40 + 24)
+    const divider = result.blocks[0]!.dividers[0]!
+    expect(divider.label).toBe('Fetch orders')
+    expect(divider.y - result.messages[1]!.y).toBeCloseTo(SEQ.rowGap / 2)
+    expect(labelTop(result.messages[2]!) - (divider.y + SEQ.dividerGap + dividerLabel(divider.label).height)).toBeCloseTo(SEQ.dividerGap)
   })
 
-  it('opt block header gets extra space', () => {
-    const result = layout(`sequenceDiagram
-      A->>B: Request
-      opt Cache available
-        B-->>A: Cached response
-      end`)
-
-    expect(result.messages).toHaveLength(2)
-    const gap = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap).toBe(40 + 28)
-  })
-
-  it('critical block header gets extra space', () => {
-    const result = layout(`sequenceDiagram
-      A->>DB: BEGIN
-      critical Transaction
-        A->>DB: UPDATE
-      end`)
-
-    expect(result.messages).toHaveLength(2)
-    const gap = result.messages[1]!.y - result.messages[0]!.y
-    expect(gap).toBe(40 + 28)
-  })
-
-  it('messages after a block return to normal spacing', () => {
+  it('a block closes its padding below its last message, and the next row follows a row gap later', () => {
     const result = layout(`sequenceDiagram
       A->>B: Before
       loop Retry
@@ -158,10 +95,9 @@ describe('sequence layout – block spacing', () => {
       end
       A->>B: After`)
 
-    expect(result.messages).toHaveLength(3)
-    // msg[1] → msg[2]: no block boundary, just base row height
-    const gap12 = result.messages[2]!.y - result.messages[1]!.y
-    expect(gap12).toBe(40)
+    const block = result.blocks[0]!
+    expect(block.y + block.height - result.messages[1]!.y).toBeCloseTo(SEQ.blockPad)
+    expect(labelTop(result.messages[2]!) - (block.y + block.height)).toBeCloseTo(SEQ.rowGap)
   })
 })
 
@@ -174,10 +110,8 @@ describe('sequence layout – block positioning', () => {
       end`)
 
     const block = result.blocks[0]!
-    const firstMsg = result.messages[1]! // msg at index 1 is startIndex
-    // Block top should be above message Y by blockPadTop (40px)
-    expect(block.y).toBeLessThan(firstMsg.y)
-    expect(firstMsg.y - block.y).toBe(40) // SEQ.blockPadTop
+    const firstMsg = result.messages[1]!
+    expect(labelTop(firstMsg) - block.y).toBeCloseTo(blockTab('loop', 'Retry').height + SEQ.blockHeaderGap)
   })
 
   it('divider Y is between the messages it separates', () => {
@@ -244,14 +178,12 @@ describe('sequence layout – block positioning', () => {
 })
 
 describe('sequence layout – diagram dimensions', () => {
-  it('diagram height increases with block extra space', () => {
-    // Diagram without blocks
+  it('a block adds its label tab, the gap under it and its bottom padding to the height', () => {
     const plain = layout(`sequenceDiagram
       A->>B: One
       B->>A: Two
       A->>B: Three`)
 
-    // Diagram with same messages but wrapped in a loop block
     const withBlock = layout(`sequenceDiagram
       A->>B: One
       loop Repeat
@@ -259,12 +191,10 @@ describe('sequence layout – diagram dimensions', () => {
       end
       A->>B: Three`)
 
-    // The block version should be taller due to header extra space
-    expect(withBlock.height).toBeGreaterThan(plain.height)
-    expect(withBlock.height - plain.height).toBe(28) // blockHeaderExtra
+    expect(withBlock.height - plain.height).toBeCloseTo(blockTab('loop', 'Repeat').height + SEQ.blockHeaderGap + SEQ.blockPad)
   })
 
-  it('diagram with multiple dividers is taller than one with none', () => {
+  it('each divider adds its label and the gaps around it, in place of a row gap', () => {
     const noDividers = layout(`sequenceDiagram
       A->>B: M1
       B->>A: M2
@@ -281,8 +211,9 @@ describe('sequence layout – diagram dimensions', () => {
         B->>A: M4
       end`)
 
-    // blockHeaderExtra (28) + 2 × dividerExtra (24 each) = 76 extra
-    expect(withDividers.height - noDividers.height).toBe(28 + 24 + 24)
+    const block = blockTab('alt', 'Case1').height + SEQ.blockHeaderGap + SEQ.blockPad
+    const divider = (label: string) => SEQ.rowGap / 2 + SEQ.dividerGap * 2 + dividerLabel(label).height - SEQ.rowGap
+    expect(withDividers.height - noDividers.height).toBeCloseTo(block + divider('Case2') + divider('Case3'))
   })
 })
 
@@ -291,12 +222,11 @@ describe('sequence layout – diagram dimensions', () => {
 // labels don't overlap at the rendered pixel level.
 //
 // The renderer draws:
-//   - Block header tab:  top at block.y, bottom at block.y + 18
-//   - Header label text: at block.y + 9 (dominant-baseline central)
+//   - Block header tab:  top at block.y, at least 18 tall
 //   - Divider line:      at divider.y
-//   - Divider label:     baseline at divider.y + 14
+//   - Divider label:     its top SEQ.dividerGap below the line
 //   - Message arrow:     at msg.y
-//   - Message label:     at msg.y - 10 (above the arrow)
+//   - Message label:     its last line SEQ.labelGap above the arrow
 // ============================================================================
 
 describe('sequence layout – render clearance', () => {
@@ -446,9 +376,7 @@ describe('sequence layout – render clearance', () => {
     expect(baselineClearance).toBeGreaterThanOrEqual(14)
   })
 
-  it('short divider labels keep the default offset (no unnecessary extra space)', () => {
-    // "No" is short enough that "[No]" doesn't reach the centered message
-    // label — no overlap, so the default offset (28) is used.
+  it('a divider label takes only its own height (no unnecessary extra space)', () => {
     const result = layout(`sequenceDiagram
       A->>B: Login
       alt Yes
@@ -457,13 +385,9 @@ describe('sequence layout – render clearance', () => {
         B->>A: 500
       end`)
 
-    const block = result.blocks[0]!
-    const divider = block.dividers[0]!
+    const divider = result.blocks[0]!.dividers[0]!
     const msgAfter = result.messages[2]!
-
-    // Default offset 28: baseline clearance = (msg.y - 6) - (msg.y - 28 + 14) = 8
-    const baselineClearance = (msgAfter.y - 6) - (divider.y + 14)
-    expect(baselineClearance).toBe(8)
+    expect(labelTop(msgAfter) - divider.y).toBeCloseTo(SEQ.dividerGap * 2 + dividerLabel('No').height)
   })
 })
 
@@ -557,7 +481,7 @@ describe('sequence layout – note bounding box', () => {
   })
 
   it('diagram without notes has no unnecessary shift', () => {
-    // No notes → no shift needed. Actors should start near SEQ.padding (30).
+    // No notes → no shift needed. Actors should start at SEQ.padding.
     const result = layout(`sequenceDiagram
       A->>B: Hello
       B-->>A: Hi`)
@@ -567,8 +491,8 @@ describe('sequence layout – note bounding box', () => {
     const firstActorX = result.actors[0]!.x
     const firstActorLeft = firstActorX - result.actors[0]!.width / 2
 
-    // Left edge should be at exactly SEQ.padding (30) — no shift applied
-    expect(firstActorLeft).toBe(30)
+    // Left edge should be at exactly SEQ.padding — no shift applied
+    expect(firstActorLeft).toBe(SEQ.padding)
   })
 
   it('diagram width expands for right-side notes beyond actors', () => {

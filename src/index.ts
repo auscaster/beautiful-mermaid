@@ -47,6 +47,7 @@ import { renderErSvg } from './er/renderer.ts'
 import { layoutMermaidGraph } from './mermaid/graph.ts'
 import { layoutMermaidClass } from './mermaid/class.ts'
 import { layoutMermaidEr } from './mermaid/er.ts'
+import { mermaidSequence, type MermaidSequenceDb } from './mermaid/sequence.ts'
 import type { MermaidLayoutData, ParsedMermaidDiagram } from './mermaid/types.ts'
 import { parseXYChart } from './xychart/parser.ts'
 import { layoutXYChart } from './xychart/layout.ts'
@@ -206,6 +207,9 @@ export function renderMermaidDiagram(
       if (typeof db.getData !== 'function') throw new Error(`Mermaid's ${parsed.type} database has no getData()`)
       // Mermaid spaces entities wider than other diagrams' nodes (140 and 80 at its 16px text).
       return renderErSvg(layoutMermaidEr(db.getData(), { padding: spacing.padding, nodeSpacing: options.nodeSpacing ?? 112, rankSpacing: options.layerSpacing ?? 64 }), colors, font, transparent, embedFonts)
+    }
+    case 'sequence': {
+      return renderSequenceSvg(layoutSequenceDiagram(mermaidSequence(parsed.db as MermaidSequenceDb), options), colors, font, transparent, embedFonts)
     }
     default:
       throw new Error(`Diagram type "${parsed.type}" is not supported`)

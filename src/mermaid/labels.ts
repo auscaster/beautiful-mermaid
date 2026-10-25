@@ -16,7 +16,8 @@ const FORMAT_TAG = /^<\/?(?:b|strong|i|em|u|s|del)\s*>$/i
  */
 export function mermaidLabel(label: string | undefined, labelType?: string): string {
   if (!label) return ''
-  let text = label
+  // Mermaid hides `#quot;` and `#9829;` from its grammar as ﬂ°quot¶ß and ﬂ°°9829¶ß; they are entities.
+  let text = label.replace(/ﬂ°°/g, '&#').replace(/ﬂ°/g, '&').replace(/¶ß/g, ';')
   if (labelType === 'markdown') {
     // A Markdown string's own newlines are line breaks, and _x_ is emphasis as *x* is.
     text = text.replace(/(^|[^\w])_([^_\s](?:[^_]*[^_\s])?)_(?=[^\w]|$)/g, '$1<i>$2</i>').replace(/__([^_]+)__/g, '<b>$1</b>')
