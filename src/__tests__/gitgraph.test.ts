@@ -41,6 +41,24 @@ describe('Mermaid git graphs', () => {
     expect([graph.direction, graph.showBranches, graph.showCommitLabel, graph.rotateCommitLabel, graph.parallelCommits]).toEqual(['LR', true, true, true, false])
   })
 
+  it('give a commit written without an id the same id each time, from the commit and its parents, and keep an id it was given', () => {
+    // Mermaid's own ids for the commits written without one: random each time it reads the graph.
+    const read = (random: string[]) => mermaidGitGraph(db(['main', 'feature'], [
+      { id: `0-${random[0]}`, branch: 'main', message: 'Start' },
+      { id: 'f1', branch: 'feature', parents: [`0-${random[0]}`] },
+      { id: `2-${random[1]}`, branch: 'main', parents: [`0-${random[0]}`, 'f1'], type: 3 },
+      { id: '3-abcdef0', branch: 'main', parents: [`2-${random[1]}`], type: 3, customId: true },
+    ])).commits.map((commit) => [commit.id, commit.parents])
+    const once = read(['3fa9c2d', '9be0471'])
+    expect(read(['c01d7e5', '42af6b8'])).toEqual(once)
+    const start = once[0]![0] as string, merge = once[2]![0] as string
+    expect(start).toMatch(/^0-[0-9a-f]{7}$/)
+    expect(merge).toMatch(/^2-[0-9a-f]{7}$/)
+    expect(once).toEqual([[start, []], ['f1', [start]], [merge, [start, 'f1']], ['3-abcdef0', [merge]]])
+    // A commit's id follows what it is: another message, another id.
+    expect(mermaidGitGraph(db(['main'], [{ id: '0-3fa9c2d', branch: 'main', message: 'Begin' }])).commits[0]!.id).not.toBe(start)
+  })
+
   it('step commits along time in the order made, a lane per branch, joining a branch from its parent and merging it back', () => {
     const graph = layoutGitGraph(mermaidGitGraph(FEATURE))
     const at = Object.fromEntries(graph.commits.map((commit) => [commit.id, [commit.x, commit.y]])) as Record<string, [number, number]>

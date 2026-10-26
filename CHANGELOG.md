@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.6 - 2026-10-26
+
+### Fixed
+
+- A git graph commit written without an id, which Mermaid gives seven random
+  hex digits, now takes an id made from the commit and its parents in the same
+  shape, so a graph draws the same each time it is drawn.
+
 ## 1.1.5 - 2026-10-26
 
 ### Added
